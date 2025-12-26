@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧬 Quantum Chemical Calculations Step Maker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🧬 Quantum Chemical Calculations Step Maker</h1>
+                <div class="software-selector">
+                    <label>Software:</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="software" value="gaussian" checked>
+                            <span>Gaussian</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="software" value="orca">
+                            <span>ORCA</span>
+                        </label>
+                    </div>
+                    <span id="software-status" class="status-badge">✔ Gaussian support active</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="main">⚙️ Mode & IO</button>
+                <button class="tab-btn" data-tab="method">🔬 Method</button>
+                <button class="tab-btn" data-tab="solvent">💧 Solvent</button>
+                <button class="tab-btn" data-tab="tddft">⚡ TD-DFT</button>
+                <button class="tab-btn" data-tab="resources">💻 Resources</button>
+                <button class="tab-btn" data-tab="scheduler">📋 Scheduler</button>
+                <button class="tab-btn" data-tab="advanced">⚙️ Advanced</button>
+                <button class="tab-btn" data-tab="generate">🚀 Generate</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="tab-content">
+                <!-- Mode & IO Tab -->
+                <div id="tab-main" class="tab-pane active">
+                    <div class="card">
+                        <h2>Mode & Steps</h2>
+                        <div class="form-group">
+                            <label>Mode:</label>
+                            <div class="button-group">
+                                <button class="mode-btn active" data-mode="full">Full (1-7)</button>
+                                <button class="mode-btn" data-mode="single">Single</button>
+                                <button class="mode-btn" data-mode="multiple">Multiple</button>
+                            </div>
+                        </div>
+                        <div class="form-group" id="step-selection">
+                            <label>Step:</label>
+                            <div class="button-group">
+                                <button class="step-btn" data-step="1">1</button>
+                                <button class="step-btn" data-step="2">2</button>
+                                <button class="step-btn" data-step="3">3</button>
+                                <button class="step-btn" data-step="4">4</button>
+                                <button class="step-btn" data-step="5">5</button>
+                                <button class="step-btn" data-step="6">6</button>
+                                <button class="step-btn" data-step="7">7</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>Input/Output Files</h2>
+                        <div class="form-group">
+                            <label>Input Type:</label>
+                            <div class="radio-group">
+                                <label><input type="radio" name="input-type" value="com" checked> .com Files</label>
+                                <label><input type="radio" name="input-type" value="log"> .log Files</label>
+                                <label><input type="radio" name="input-type" value="smiles"> SMILES</label>
+                            </div>
+                        </div>
+                        <div class="form-group" id="file-input-group">
+                            <label>Input Files:</label>
+                            <input type="file" id="file-input" multiple accept=".com,.log">
+                            <button class="btn-secondary" id="browse-btn">Browse</button>
+                        </div>
+                        <div class="form-group" id="smiles-input-group" style="display: none;">
+                            <label>SMILES Input:</label>
+                            <textarea id="smiles-text" rows="6" placeholder="Paste SMILES here, one per line or with names: name:SMILES"></textarea>
+                            <div class="form-row">
+                                <button class="btn-secondary" id="load-svg-btn">Load Names from SVG</button>
+                                <button class="btn-secondary" id="chemdraw-help-btn">ChemDraw Help</button>
+                            </div>
+                            <div class="form-row">
+                                <label>Add Prefix: <input type="text" id="prefix-input" placeholder="prefix"></label>
+                                <label>Add Suffix: <input type="text" id="suffix-input" placeholder="suffix"></label>
+                            </div>
+                            <div class="form-row">
+                                <label>Charge: <input type="number" id="charge-input" value="0"></label>
+                                <label>Multiplicity: <input type="number" id="mult-input" value="1" min="1"></label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Output Directory:</label>
+                            <input type="text" id="output-dir" value="Gaussian_Jobs" placeholder="Output directory name">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Method Tab -->
+                <div id="tab-method" class="tab-pane">
+                    <div class="card">
+                        <h2>Method & Basis Set</h2>
+                        <div class="form-group">
+                            <label>Functional:</label>
+                            <select id="functional-select">
+                                <option value="m062x">M06-2X</option>
+                                <option value="wb97xd">wB97XD</option>
+                                <option value="b3lyp">B3LYP</option>
+                                <option value="pbe0">PBE0</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Basis Set:</label>
+                            <select id="basis-select">
+                                <option value="def2SVP">def2-SVP</option>
+                                <option value="def2TZVP">def2-TZVP</option>
+                                <option value="631Gd">6-31G(d)</option>
+                                <option value="631Gdp">6-31G(d,p)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Solvent Tab -->
+                <div id="tab-solvent" class="tab-pane">
+                    <div class="card">
+                        <h2>Solvent Settings</h2>
+                        <div class="form-group">
+                            <label>Solvent Model:</label>
+                            <select id="solvent-model-select">
+                                <option value="none">None</option>
+                                <option value="PCM">PCM</option>
+                                <option value="SMD">SMD</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Solvent Name:</label>
+                            <select id="solvent-name-select">
+                                <option value="DMSO">DMSO</option>
+                                <option value="Water">Water</option>
+                                <option value="Methanol">Methanol</option>
+                                <option value="Ethanol">Ethanol</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TD-DFT Tab -->
+                <div id="tab-tddft" class="tab-pane">
+                    <div class="card">
+                        <h2>TD-DFT Settings</h2>
+                        <div class="form-group">
+                            <label>State Type:</label>
+                            <div class="radio-group">
+                                <label><input type="radio" name="state-type" value="singlet" checked> Singlet</label>
+                                <label><input type="radio" name="state-type" value="triplet"> Triplet</label>
+                                <label><input type="radio" name="state-type" value="mixed"> Mixed (50-50)</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>NStates: <input type="number" id="td-nstates" value="6" min="1"></label>
+                        </div>
+                        <div class="form-group">
+                            <label>Root: <input type="number" id="td-root" value="1" min="1"></label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resources Tab -->
+                <div id="tab-resources" class="tab-pane">
+                    <div class="card">
+                        <h2>Computational Resources</h2>
+                        <div class="form-group">
+                            <label>NPROC (Cores): <input type="number" id="nproc-input" value="64" min="1"></label>
+                        </div>
+                        <div class="form-group">
+                            <label>MEM (Memory): <input type="text" id="mem-input" value="128GB"></label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scheduler Tab -->
+                <div id="tab-scheduler" class="tab-pane">
+                    <div class="card">
+                        <h2>Scheduler Settings</h2>
+                        <div class="form-group">
+                            <label>Scheduler:</label>
+                            <select id="scheduler-select">
+                                <option value="pbs">PBS</option>
+                                <option value="slurm">SLURM</option>
+                                <option value="local">Local</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Queue: <input type="text" id="queue-input" value="normal"></label>
+                        </div>
+                        <div class="form-group">
+                            <label>Walltime: <input type="text" id="walltime-input" value="24:00:00"></label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Tab -->
+                <div id="tab-advanced" class="tab-pane">
+                    <div class="card">
+                        <h2>Advanced Settings</h2>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="pop-full"> Pop Full
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="dispersion"> Dispersion (GD3BJ)
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="soc-enable"> Prepare for PySOC
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Generate Tab -->
+                <div id="tab-generate" class="tab-pane">
+                    <div class="card">
+                        <h2>Preview & Generate</h2>
+                        <div class="form-group">
+                            <button class="btn-primary" id="preview-btn">Preview</button>
+                            <button class="btn-primary" id="generate-btn">Generate Files</button>
+                        </div>
+                        <div id="preview-content" class="preview-area"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+

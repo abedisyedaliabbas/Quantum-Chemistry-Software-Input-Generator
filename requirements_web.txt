@@ -1,0 +1,15 @@
+# Quantum Chemical Calculations Step Maker - Web Version Dependencies
+
+# Web framework
+Flask>=2.3.0
+flask-cors>=4.0.0
+
+# Optional: RDKit for SMILES processing
+# Install via conda (recommended): conda install -c conda-forge rdkit
+# Or via pip (may have limitations):
+# rdkit-pypi>=2022.9.1; platform_system != "Windows"
+# rdkit>=2022.9.1; platform_system == "Windows"
+
+# Note: RDKit is optional but recommended for SMILES functionality
+# The web app will work without it, but SMILES processing will be disabled
+

@@ -1,0 +1,19 @@
+# Quantum Chemical Calculations Step Maker - Desktop GUI Dependencies
+
+# Core dependencies (required)
+# Note: tkinter usually comes with Python, but may need to be installed separately on Linux
+
+# Optional but recommended
+# RDKit for SMILES processing
+# Install via conda: conda install -c conda-forge rdkit
+# Or via pip (may have limitations): pip install rdkit-pypi
+
+# XML parsing (usually built-in, but listed for completeness)
+# xml.etree.ElementTree is part of Python standard library
+
+# File handling
+pathlib  # Part of Python 3.4+
+
+# No external dependencies required for basic functionality!
+# The application uses only Python standard library + tkinter
+
