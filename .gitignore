@@ -48,6 +48,8 @@ desktop.ini
 *.inp
 *.sh
 *.zip
+*.o
+*.e
 
 # Temporary files
 temp/
@@ -75,4 +77,3 @@ htmlcov/
 
 # PyInstaller
 *.spec
-
