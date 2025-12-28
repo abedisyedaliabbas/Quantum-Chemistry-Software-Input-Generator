@@ -17,3 +17,4 @@ pathlib  # Part of Python 3.4+
 # No external dependencies required for basic functionality!
 # The application uses only Python standard library + tkinter
 
+

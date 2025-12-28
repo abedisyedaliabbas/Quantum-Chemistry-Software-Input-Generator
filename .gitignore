@@ -77,3 +77,11 @@ htmlcov/
 
 # PyInstaller
 *.spec
+
+# Share/distribution folders
+QuantumStepMaker_Share/
+FILES_TO_SHARE.md
+SHARE_CHECKLIST.txt
+
+# Old TICT code (now integrated into main app)
+TICT/

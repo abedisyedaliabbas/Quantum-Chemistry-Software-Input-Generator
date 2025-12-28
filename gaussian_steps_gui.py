@@ -44,6 +44,13 @@ from pathlib import Path
 from typing import List, Sequence, Tuple, Optional
 import json, re, glob, os, stat, subprocess, sys
 
+# Import TICT rotation module
+try:
+    from tict_rotation import generate_tict_rotations
+    TICT_AVAILABLE = True
+except ImportError:
+    TICT_AVAILABLE = False
+
 # Try to import RDKit for SMILES support
 RDKIT_AVAILABLE = False
 RDKIT_ERROR = None
@@ -1009,6 +1016,7 @@ class App:
         nb = ttk.Notebook(self.root); nb.pack(fill='both', expand=True, padx=8, pady=8)
         self._tab_main(nb)
         self._tab_advanced(nb)
+        self._tab_tict(nb)
         self._tab_generate(nb)
 
     def _create_card(self, parent, title):
@@ -1695,6 +1703,166 @@ B 2 3 1.50 F         (Freeze bond length at 1.50 Å)"""
         scrollbar.pack(side="right", fill="y")
         
         self._update_visible_routes()
+    
+    def _tab_tict(self, nb):
+        """TICT Rotation Tab"""
+        f = tk.Frame(nb, bg=self.colors['bg'])
+        nb.add(f, text='🔄 TICT Rotation')
+        
+        # Scrollable container
+        canvas = tk.Canvas(f, bg=self.colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(f, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg'])
+        
+        def update_scroll_region(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        def on_canvas_configure(event):
+            canvas_width = event.width
+            if canvas.find_all():
+                canvas.itemconfig(canvas.find_all()[0], width=canvas_width)
+        
+        scrollable_frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", on_canvas_configure)
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Enable mousewheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # Initialize TICT variables
+        if not hasattr(self, 'tict_vars'):
+            self.tict_vars = {
+                'INPUT_FILE': tk.StringVar(value=""),
+                'OUTPUT_DIR': tk.StringVar(value=""),
+                'AXIS': tk.StringVar(value="3,10"),
+                'BRANCH_A': tk.StringVar(value="11,18,22"),
+                'BRANCH_A_STEP': tk.StringVar(value="-8.81"),
+                'BRANCH_B': tk.StringVar(value="12-13,19-21,23-26"),
+                'BRANCH_B_STEP': tk.StringVar(value="-9.36"),
+                'NUM_STEPS': tk.StringVar(value="9"),
+            }
+            self.tict_output_dir = None
+        
+        # File Selection Section
+        file_card = self._create_card(scrollable_frame, 'Input/Output Files')
+        file_card.pack(fill='x', padx=15, pady=8)
+        
+        file_content = tk.Frame(file_card, bg=self.colors['card'])
+        file_content.pack(fill='x', padx=10, pady=10)
+        
+        # Input file
+        input_row = tk.Frame(file_content, bg=self.colors['card'])
+        input_row.pack(fill='x', pady=5)
+        tk.Label(input_row, text='Input File (.com):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        tk.Entry(input_row, textvariable=self.tict_vars['INPUT_FILE'], width=60,
+                font=('Segoe UI', 9)).pack(side='left', fill='x', expand=True, padx=(0,5))
+        tk.Button(input_row, text='Browse...', command=self._tict_browse_input,
+                 font=('Segoe UI', 9), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=4, cursor='hand2').pack(side='left')
+        
+        # Output directory
+        output_row = tk.Frame(file_content, bg=self.colors['card'])
+        output_row.pack(fill='x', pady=5)
+        tk.Label(output_row, text='Output Directory:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        tk.Entry(output_row, textvariable=self.tict_vars['OUTPUT_DIR'], width=60,
+                font=('Segoe UI', 9)).pack(side='left', fill='x', expand=True, padx=(0,5))
+        tk.Button(output_row, text='Browse...', command=self._tict_browse_output,
+                 font=('Segoe UI', 9), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=4, cursor='hand2').pack(side='left')
+        
+        # Rotation Parameters Section
+        params_card = self._create_card(scrollable_frame, 'TICT Rotation Parameters (1-Based Atom Indices)')
+        params_card.pack(fill='x', padx=15, pady=8)
+        
+        params_content = tk.Frame(params_card, bg=self.colors['card'])
+        params_content.pack(fill='x', padx=10, pady=10)
+        
+        # Create grid layout for parameters
+        params_content.columnconfigure(1, weight=1)
+        
+        row = 0
+        # Rotation Axis
+        tk.Label(params_content, text='Rotation Axis (2 atoms, e.g., "3,10"):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars['AXIS'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        # Branch A
+        tk.Label(params_content, text='Branch A Indices:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars['BRANCH_A'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch A Step (degrees):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars['BRANCH_A_STEP'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        # Branch B
+        tk.Label(params_content, text='Branch B Indices:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars['BRANCH_B'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch B Step (degrees):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars['BRANCH_B_STEP'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        # Number of steps
+        tk.Label(params_content, text='Number of Steps (0 to N inclusive):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars['NUM_STEPS'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        # Help text
+        help_text = """Help: Enter atom indices using 1-based indexing (as in GaussView).
+You can use ranges (e.g., "12-13") and comma-separated lists (e.g., "11,18,22").
+Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
+        tk.Label(params_content, text=help_text, font=('Segoe UI', 8), bg=self.colors['card'],
+                fg=self.colors['text_light'], justify='left', wraplength=600).grid(row=row, column=0, columnspan=2, sticky='w', padx=5, pady=(10,5))
+        
+        # Generate Button
+        button_card = self._create_card(scrollable_frame, None)
+        button_card.pack(fill='x', padx=15, pady=8)
+        button_frame = tk.Frame(button_card, bg=self.colors['card'])
+        button_frame.pack(fill='x', padx=10, pady=10)
+        
+        tk.Button(button_frame, text='Generate Rotated Geometries', command=self._tict_generate,
+                 font=('Segoe UI', 11, 'bold'), bg=self.colors['accent'], fg='white',
+                 relief='flat', padx=25, pady=10, cursor='hand2').pack(side='left', padx=5)
+        
+        if not TICT_AVAILABLE:
+            warning_label = tk.Label(button_frame, text='⚠️ TICT module not available', 
+                                    font=('Segoe UI', 9), bg=self.colors['card'], fg='red')
+            warning_label.pack(side='left', padx=10)
+        
+        # Status and Log
+        log_card = self._create_card(scrollable_frame, 'Status & Log')
+        log_card.pack(fill='both', expand=True, padx=15, pady=8)
+        log_content = tk.Frame(log_card, bg=self.colors['card'])
+        log_content.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        self.tict_log = scrolledtext.ScrolledText(log_content, wrap='word', font=('Consolas', 10),
+                                                  bg='white', fg='black', height=15)
+        self.tict_log.pack(fill='both', expand=True)
+        self.tict_log.insert('1.0', 'Ready. Select input file and set parameters, then click "Generate Rotated Geometries".\n')
+        
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+        
+        # Watermark
+        watermark_frame = tk.Frame(scrollable_frame, bg=self.colors['bg'])
+        watermark_frame.pack(fill='x', pady=20)
+        watermark_label = tk.Label(watermark_frame, text='Designed by Abedi', 
+                                   font=('Segoe UI', 8, 'italic'), 
+                                   bg=self.colors['bg'], fg=self.colors['text_light'])
+        watermark_label.pack()
 
     def _tab_generate(self, nb):
         f = tk.Frame(nb, bg=self.colors['bg'])
@@ -1764,6 +1932,101 @@ B 2 3 1.50 F         (Freeze bond length at 1.50 Å)"""
         path = filedialog.askdirectory(title='Select output directory')
         if path:
             self.vars['OUT_DIR'].set(str(Path(path)))
+    
+    def _tict_browse_input(self):
+        """Browse for input .com file for TICT rotation"""
+        path = filedialog.askopenfilename(title='Select input .com file', filetypes=[('Gaussian COM files', '*.com'), ('All files', '*.*')])
+        if path:
+            self.tict_vars['INPUT_FILE'].set(path)
+            # Auto-set output directory to same location if not set
+            if not self.tict_vars['OUTPUT_DIR'].get():
+                self.tict_vars['OUTPUT_DIR'].set(str(Path(path).parent))
+    
+    def _tict_browse_output(self):
+        """Browse for output directory for TICT rotation"""
+        path = filedialog.askdirectory(title='Select output directory for rotated geometries')
+        if path:
+            self.tict_vars['OUTPUT_DIR'].set(path)
+    
+    def _tict_generate(self):
+        """Generate TICT rotated geometries"""
+        if not TICT_AVAILABLE:
+            messagebox.showerror('TICT Module Error', 'TICT rotation module is not available. Please ensure tict_rotation.py is in the same directory.')
+            return
+        
+        # Clear log
+        self.tict_log.delete('1.0', tk.END)
+        self.tict_log.insert('1.0', 'Starting TICT rotation generation...\n\n')
+        
+        # Get inputs
+        input_file = self.tict_vars['INPUT_FILE'].get().strip()
+        output_dir = self.tict_vars['OUTPUT_DIR'].get().strip()
+        
+        if not input_file:
+            self.tict_log.insert(tk.END, 'ERROR: Please select an input file.\n')
+            return
+        
+        if not os.path.exists(input_file):
+            self.tict_log.insert(tk.END, f'ERROR: Input file does not exist: {input_file}\n')
+            return
+        
+        if not output_dir:
+            self.tict_log.insert(tk.END, 'ERROR: Please select an output directory.\n')
+            return
+        
+        try:
+            axis_str = self.tict_vars['AXIS'].get().strip()
+            branch_a_str = self.tict_vars['BRANCH_A'].get().strip()
+            branch_a_step = float(self.tict_vars['BRANCH_A_STEP'].get().strip())
+            branch_b_str = self.tict_vars['BRANCH_B'].get().strip()
+            branch_b_step = float(self.tict_vars['BRANCH_B_STEP'].get().strip())
+            num_steps = int(self.tict_vars['NUM_STEPS'].get().strip())
+        except ValueError as e:
+            self.tict_log.insert(tk.END, f'ERROR: Invalid parameter value: {e}\n')
+            return
+        
+        # Create output directory name
+        base_name = Path(input_file).stem
+        tict_output_dir = os.path.join(output_dir, f"{base_name}_tict_rotations")
+        
+        self.tict_log.insert(tk.END, f'Input file: {input_file}\n')
+        self.tict_log.insert(tk.END, f'Output directory: {tict_output_dir}\n')
+        self.tict_log.insert(tk.END, f'Rotation axis: {axis_str}\n')
+        self.tict_log.insert(tk.END, f'Branch A: {branch_a_str}, step: {branch_a_step}°\n')
+        self.tict_log.insert(tk.END, f'Branch B: {branch_b_str}, step: {branch_b_step}°\n')
+        self.tict_log.insert(tk.END, f'Number of steps: {num_steps}\n\n')
+        self.tict_log.update()
+        
+        # Generate rotations
+        success, message, files_created = generate_tict_rotations(
+            input_file=input_file,
+            output_dir=tict_output_dir,
+            axis_str=axis_str,
+            branch_a_str=branch_a_str,
+            branch_a_step_deg=branch_a_step,
+            branch_b_str=branch_b_str,
+            branch_b_step_deg=branch_b_step,
+            num_steps=num_steps,
+            file_format="gaussian"
+        )
+        
+        if success:
+            self.tict_log.insert(tk.END, f'\n{message}\n')
+            self.tict_log.insert(tk.END, f'\nFiles created:\n')
+            for f in files_created[:10]:  # Show first 10 files
+                self.tict_log.insert(tk.END, f'  {os.path.basename(f)}\n')
+            if len(files_created) > 10:
+                self.tict_log.insert(tk.END, f'  ... and {len(files_created) - 10} more files\n')
+            self.tict_log.insert(tk.END, f'\n✅ Success! Rotated geometries saved to:\n  {tict_output_dir}\n')
+            self.tict_log.insert(tk.END, f'\n💡 Tip: You can now use these rotated geometries in the Main Settings tab\n')
+            self.tict_log.insert(tk.END, f'   by setting the Input field to: {tict_output_dir}\n')
+            self.tict_output_dir = tict_output_dir
+            messagebox.showinfo('TICT Rotation Complete', f'Successfully generated {len(files_created)} rotated geometry files!\n\nSaved to:\n{tict_output_dir}')
+        else:
+            self.tict_log.insert(tk.END, f'\n❌ ERROR: {message}\n')
+            messagebox.showerror('TICT Rotation Error', message)
+        
+        self.tict_log.see(tk.END)
     
     def _on_input_type_change(self):
         """Show/hide input fields based on input type selection and update labels"""

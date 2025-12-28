@@ -61,7 +61,23 @@ try:
 except ImportError:
     ORCA_XML_AVAILABLE = False
 
+# Import TICT rotation module
+try:
+    from tict_rotation import generate_tict_rotations
+    TICT_AVAILABLE = True
+except ImportError:
+    TICT_AVAILABLE = False
+
+# Import Gemini AI
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    GEMINI_ERROR = "google-generativeai not installed. Install with: pip install google-generativeai"
+
 PREFS_FILE = Path.home() / ".quantum_steps_gui.json"
+GEMINI_API_KEY_FILE = Path.home() / ".gemini_api_key.txt"
 
 # ===================== ORCA Backend Logic =====================
 # ORCA-specific defaults
@@ -484,9 +500,11 @@ class QuantumStepsApp:
             self.step_geom_source_vars = {}
             self.inline_vars = {}
         
-        # Build all three Gaussian tabs
+        # Build all Gaussian tabs including TICT and AI Assistant
         self._gaussian_tab_main()
         self._gaussian_tab_advanced()
+        self._gaussian_tab_tict()
+        self._gaussian_tab_ai_assistant()
         self._gaussian_tab_generate()
     
     def _gaussian_create_card(self, parent, title):
@@ -1063,6 +1081,8 @@ class QuantumStepsApp:
             self._tab_orca_resources()
             self._tab_orca_scheduler()
             self._tab_orca_custom()
+            self._tab_orca_tict()
+            self._tab_orca_ai_assistant()
             self._tab_orca_generate()
         except Exception as e:
             import traceback
@@ -2036,6 +2056,304 @@ This step allows you to add any custom ORCA calculation to your workflow."""
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+    
+    def _tab_orca_tict(self):
+        """ORCA TICT Rotation Tab"""
+        f = tk.Frame(self.notebook, bg=self.colors['bg'])
+        self.notebook.add(f, text='🔄 TICT Rotation')
+        
+        # Scrollable container
+        canvas = tk.Canvas(f, bg=self.colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(f, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg'])
+        
+        def update_scroll_region(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        def on_canvas_configure(event):
+            canvas_width = event.width
+            if canvas.find_all():
+                canvas.itemconfig(canvas.find_all()[0], width=canvas_width)
+        
+        scrollable_frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", on_canvas_configure)
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Enable mousewheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # Initialize TICT variables for ORCA
+        if not hasattr(self, 'tict_vars_orca'):
+            self.tict_vars_orca = {
+                'INPUT_FILE': tk.StringVar(value=""),
+                'OUTPUT_DIR': tk.StringVar(value=""),
+                'AXIS': tk.StringVar(value="3,10"),
+                'BRANCH_A': tk.StringVar(value="11,18,22"),
+                'BRANCH_A_STEP': tk.StringVar(value="-8.81"),
+                'BRANCH_B': tk.StringVar(value="12-13,19-21,23-26"),
+                'BRANCH_B_STEP': tk.StringVar(value="-9.36"),
+                'NUM_STEPS': tk.StringVar(value="9"),
+            }
+        
+        # File Selection Section
+        file_card = self._orca_create_card(scrollable_frame, 'Input/Output Files')
+        file_card.pack(fill='x', padx=15, pady=8)
+        
+        file_content = tk.Frame(file_card, bg=self.colors['card'])
+        file_content.pack(fill='x', padx=10, pady=10)
+        
+        # Input file (ORCA supports .xyz and .inp)
+        input_row = tk.Frame(file_content, bg=self.colors['card'])
+        input_row.pack(fill='x', pady=5)
+        tk.Label(input_row, text='Input File (.xyz or .inp):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        tk.Entry(input_row, textvariable=self.tict_vars_orca['INPUT_FILE'], width=60,
+                font=('Segoe UI', 9)).pack(side='left', fill='x', expand=True, padx=(0,5))
+        tk.Button(input_row, text='Browse...', command=lambda: self._tict_browse_input_orca(),
+                 font=('Segoe UI', 9), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=4, cursor='hand2').pack(side='left')
+        
+        # Output directory
+        output_row = tk.Frame(file_content, bg=self.colors['card'])
+        output_row.pack(fill='x', pady=5)
+        tk.Label(output_row, text='Output Directory:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        tk.Entry(output_row, textvariable=self.tict_vars_orca['OUTPUT_DIR'], width=60,
+                font=('Segoe UI', 9)).pack(side='left', fill='x', expand=True, padx=(0,5))
+        tk.Button(output_row, text='Browse...', command=lambda: self._tict_browse_output_orca(),
+                 font=('Segoe UI', 9), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=4, cursor='hand2').pack(side='left')
+        
+        # Rotation Parameters Section (same as Gaussian)
+        params_card = self._orca_create_card(scrollable_frame, 'TICT Rotation Parameters (1-Based Atom Indices)')
+        params_card.pack(fill='x', padx=15, pady=8)
+        
+        params_content = tk.Frame(params_card, bg=self.colors['card'])
+        params_content.pack(fill='x', padx=10, pady=10)
+        
+        params_content.columnconfigure(1, weight=1)
+        
+        row = 0
+        tk.Label(params_content, text='Rotation Axis (2 atoms, e.g., "3,10"):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_orca['AXIS'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch A Indices:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_orca['BRANCH_A'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch A Step (degrees):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_orca['BRANCH_A_STEP'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch B Indices:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_orca['BRANCH_B'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch B Step (degrees):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_orca['BRANCH_B_STEP'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Number of Steps (0 to N inclusive):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_orca['NUM_STEPS'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        help_text = """Help: Enter atom indices using 1-based indexing.
+You can use ranges (e.g., "12-13") and comma-separated lists (e.g., "11,18,22").
+Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
+        tk.Label(params_content, text=help_text, font=('Segoe UI', 8), bg=self.colors['card'],
+                fg=self.colors['text_light'], justify='left', wraplength=600).grid(row=row, column=0, columnspan=2, sticky='w', padx=5, pady=(10,5))
+        
+        # Generate Button
+        button_card = self._orca_create_card(scrollable_frame, None)
+        button_card.pack(fill='x', padx=15, pady=8)
+        button_frame = tk.Frame(button_card, bg=self.colors['card'])
+        button_frame.pack(fill='x', padx=10, pady=10)
+        
+        tk.Button(button_frame, text='Generate Rotated Geometries (ORCA .xyz)', command=lambda: self._tict_generate_orca(),
+                 font=('Segoe UI', 11, 'bold'), bg=self.colors['accent'], fg='white',
+                 relief='flat', padx=25, pady=10, cursor='hand2').pack(side='left', padx=5)
+        
+        if not TICT_AVAILABLE:
+            warning_label = tk.Label(button_frame, text='⚠️ TICT module not available', 
+                                    font=('Segoe UI', 9), bg=self.colors['card'], fg='red')
+            warning_label.pack(side='left', padx=10)
+        
+        # Status and Log
+        log_card = self._orca_create_card(scrollable_frame, 'Status & Log')
+        log_card.pack(fill='both', expand=True, padx=15, pady=8)
+        log_content = tk.Frame(log_card, bg=self.colors['card'])
+        log_content.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        self.tict_log_orca = scrolledtext.ScrolledText(log_content, wrap='word', font=('Consolas', 10),
+                                                  bg='white', fg='black', height=15)
+        self.tict_log_orca.pack(fill='both', expand=True)
+        self.tict_log_orca.insert('1.0', 'Ready. Select input file and set parameters, then click "Generate Rotated Geometries".\n')
+        
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+        
+        # Watermark
+        watermark_frame = tk.Frame(scrollable_frame, bg=self.colors['bg'])
+        watermark_frame.pack(fill='x', pady=20)
+        watermark_label = tk.Label(watermark_frame, text='Designed by Abedi', 
+                                   font=('Segoe UI', 8, 'italic'), 
+                                   bg=self.colors['bg'], fg=self.colors['text_light'])
+        watermark_label.pack()
+    
+    def _tab_orca_ai_assistant(self):
+        """ORCA AI Assistant Tab with Gemini Pro"""
+        f = tk.Frame(self.notebook, bg=self.colors['bg'])
+        self.notebook.add(f, text='🤖 AI Assistant')
+        
+        # Scrollable container
+        canvas = tk.Canvas(f, bg=self.colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(f, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg'])
+        
+        def update_scroll_region(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        def on_canvas_configure(event):
+            canvas_width = event.width
+            if canvas.find_all():
+                canvas.itemconfig(canvas.find_all()[0], width=canvas_width)
+        
+        scrollable_frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", on_canvas_configure)
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # Settings Section
+        settings_card = self._orca_create_card(scrollable_frame, 'AI Settings')
+        settings_card.pack(fill='x', padx=15, pady=8)
+        
+        settings_content = tk.Frame(settings_card, bg=self.colors['card'])
+        settings_content.pack(fill='x', padx=10, pady=10)
+        
+        # Check Ollama status
+        try:
+            from ai_assistant import OLLAMA_AVAILABLE, GEMINI_AVAILABLE
+            ollama_status = "✓ Available" if OLLAMA_AVAILABLE else "✗ Not installed"
+            gemini_status = "✓ Available" if GEMINI_AVAILABLE else "✗ Not installed"
+        except:
+            ollama_status = "Unknown"
+            gemini_status = "Unknown"
+        
+        status_row = tk.Frame(settings_content, bg=self.colors['card'])
+        status_row.pack(fill='x', pady=5)
+        tk.Label(status_row, text='Ollama (Free, Local):', font=('Segoe UI', 10, 'bold'),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        tk.Label(status_row, text=ollama_status, font=('Segoe UI', 10),
+                bg=self.colors['card'], fg='green' if '✓' in ollama_status else 'red').pack(side='left', padx=(0,20))
+        
+        if not OLLAMA_AVAILABLE:
+            import platform
+            if platform.system() == 'Darwin':  # macOS
+                install_text = 'Install: Download from https://ollama.com/download or: brew install ollama'
+            else:  # Linux
+                install_text = 'Install: curl -fsSL https://ollama.com/install.sh | sh'
+            install_label = tk.Label(status_row, text=install_text, 
+                                    font=('Segoe UI', 8), bg=self.colors['card'], fg=self.colors['text_light'])
+            install_label.pack(side='left', padx=10)
+        
+        # Gemini API Key (optional)
+        gemini_row = tk.Frame(settings_content, bg=self.colors['card'])
+        gemini_row.pack(fill='x', pady=5)
+        tk.Label(gemini_row, text='Gemini API Key (Optional):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        
+        if not hasattr(self, 'gemini_api_key_var_orca'):
+            self.gemini_api_key_var_orca = tk.StringVar()
+            try:
+                from ai_assistant import load_gemini_api_key
+                existing_key = load_gemini_api_key()
+                if existing_key:
+                    self.gemini_api_key_var_orca.set(existing_key)
+            except:
+                pass
+        
+        api_entry = tk.Entry(gemini_row, textvariable=self.gemini_api_key_var_orca, show='*', width=40, font=('Segoe UI', 9))
+        api_entry.pack(side='left', fill='x', expand=True, padx=(0,5))
+        tk.Button(gemini_row, text='Save', command=lambda: self._save_gemini_key(api_entry.get()),
+                 font=('Segoe UI', 9), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=4, cursor='hand2').pack(side='left')
+        tk.Label(gemini_row, text='Get free key: https://makersuite.google.com/app/apikey', 
+                font=('Segoe UI', 8), bg=self.colors['card'], fg=self.colors['text_light']).pack(side='left', padx=10)
+        
+        # Chat Interface
+        chat_card = self._orca_create_card(scrollable_frame, 'Chat with AI Assistant')
+        chat_card.pack(fill='both', expand=True, padx=15, pady=8)
+        
+        chat_content = tk.Frame(chat_card, bg=self.colors['card'])
+        chat_content.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Chat display area
+        chat_display = scrolledtext.ScrolledText(chat_content, wrap='word', font=('Segoe UI', 10),
+                                                  bg='white', fg='black', height=20, state=tk.DISABLED)
+        chat_display.pack(fill='both', expand=True, pady=(0,10))
+        chat_display.tag_config('user', foreground='blue', font=('Segoe UI', 10, 'bold'))
+        chat_display.tag_config('assistant', foreground='green', font=('Segoe UI', 10))
+        chat_display.tag_config('error', foreground='red', font=('Segoe UI', 10))
+        
+        # Initial message
+        chat_display.config(state=tk.NORMAL)
+        chat_display.insert('1.0', '🤖 AI Assistant: Hello! I can help you set up ORCA quantum chemistry calculations.\n\n'
+                                   'Tell me what you want to calculate, and I\'ll guide you through the process.\n\n'
+                                   'Examples:\n'
+                                   '- "I want to optimize a benzene molecule in DMSO"\n'
+                                   '- "Calculate excited states for a TICT molecule"\n'
+                                   '- "Set up a full workflow for fluorescence calculations"\n\n', 'assistant')
+        chat_display.config(state=tk.DISABLED)
+        
+        # Input area
+        input_frame = tk.Frame(chat_content, bg=self.colors['card'])
+        input_frame.pack(fill='x')
+        
+        input_entry = tk.Entry(input_frame, font=('Segoe UI', 10))
+        input_entry.pack(side='left', fill='x', expand=True, padx=(0,5))
+        input_entry.bind('<Return>', lambda e: self._send_ai_message(input_entry, chat_display, 'orca'))
+        
+        button_frame = tk.Frame(input_frame, bg=self.colors['card'])
+        button_frame.pack(side='left')
+        
+        tk.Button(button_frame, text='Send', command=lambda: self._send_ai_message(input_entry, chat_display, 'orca'),
+                 font=('Segoe UI', 9, 'bold'), bg=self.colors['accent'], fg='white',
+                 relief='flat', padx=20, pady=5, cursor='hand2').pack(side='left', padx=2)
+        tk.Button(button_frame, text='Generate Files', command=lambda: self._generate_files_from_ai_conversation(chat_display, 'orca'),
+                 font=('Segoe UI', 9, 'bold'), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=5, cursor='hand2').pack(side='left', padx=2)
+        tk.Button(button_frame, text='Clear', command=lambda: self._clear_ai_chat(chat_display),
+                 font=('Segoe UI', 9), bg=self.colors['secondary'], fg='white',
+                 relief='flat', padx=15, pady=5, cursor='hand2').pack(side='left', padx=2)
+        
+        # Store references
+        self.orca_chat_display = chat_display
+        self.orca_chat_input = input_entry
+        
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+        
+        # Watermark
+        watermark_frame = tk.Frame(scrollable_frame, bg=self.colors['bg'])
+        watermark_frame.pack(fill='x', pady=20)
+        watermark_label = tk.Label(watermark_frame, text='Powered by Ollama (Free) / Gemini | Designed by Abedi', 
+                                   font=('Segoe UI', 8, 'italic'), 
+                                   bg=self.colors['bg'], fg=self.colors['text_light'])
+        watermark_label.pack()
     
     def _tab_orca_generate(self):
         """Build ORCA Generate tab - matching Gaussian style"""
@@ -3202,6 +3520,301 @@ Example: D 4 5 6 7 180.0 F    (Freeze dihedral angle at 180 degrees)"""
         
         self._gaussian_update_visible_routes(immediate=True)
     
+    def _gaussian_tab_tict(self):
+        """Gaussian TICT Rotation Tab - reuses implementation from gaussian_steps_gui"""
+        # Since we import from gaussian_steps_gui, we can create a minimal wrapper
+        # or reuse the same structure. For now, let's create it directly here.
+        f = tk.Frame(self.notebook, bg=self.colors['bg'])
+        self.notebook.add(f, text='🔄 TICT Rotation')
+        
+        # Scrollable container
+        canvas = tk.Canvas(f, bg=self.colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(f, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg'])
+        
+        def update_scroll_region(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        def on_canvas_configure(event):
+            canvas_width = event.width
+            if canvas.find_all():
+                canvas.itemconfig(canvas.find_all()[0], width=canvas_width)
+        
+        scrollable_frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", on_canvas_configure)
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # Initialize TICT variables for Gaussian (only advanced TICT mode)
+        if not hasattr(self, 'tict_vars_gaussian'):
+            self.tict_vars_gaussian = {
+                'INPUT_FILE': tk.StringVar(value=""),
+                'OUTPUT_DIR': tk.StringVar(value=""),
+                'AXIS': tk.StringVar(value="3,10"),
+                'BRANCH_A': tk.StringVar(value="11,18,22"),
+                'BRANCH_A_STEP': tk.StringVar(value="-8.81"),
+                'BRANCH_B': tk.StringVar(value="12-13,19-21,23-26"),
+                'BRANCH_B_STEP': tk.StringVar(value="-9.36"),
+                'NUM_STEPS': tk.StringVar(value="9"),
+            }
+        
+        # File Selection Section
+        file_card = self._gaussian_create_card(scrollable_frame, 'Input/Output Files')
+        file_card.pack(fill='x', padx=15, pady=8)
+        
+        file_content = tk.Frame(file_card, bg=self.colors['card'])
+        file_content.pack(fill='x', padx=10, pady=10)
+        
+        input_row = tk.Frame(file_content, bg=self.colors['card'])
+        input_row.pack(fill='x', pady=5)
+        tk.Label(input_row, text='Input File (.com):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        tk.Entry(input_row, textvariable=self.tict_vars_gaussian['INPUT_FILE'], width=60,
+                font=('Segoe UI', 9)).pack(side='left', fill='x', expand=True, padx=(0,5))
+        tk.Button(input_row, text='Browse...', command=lambda: self._tict_browse_input_gaussian(),
+                 font=('Segoe UI', 9), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=4, cursor='hand2').pack(side='left')
+        
+        output_row = tk.Frame(file_content, bg=self.colors['card'])
+        output_row.pack(fill='x', pady=5)
+        tk.Label(output_row, text='Output Directory:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        tk.Entry(output_row, textvariable=self.tict_vars_gaussian['OUTPUT_DIR'], width=60,
+                font=('Segoe UI', 9)).pack(side='left', fill='x', expand=True, padx=(0,5))
+        tk.Button(output_row, text='Browse...', command=lambda: self._tict_browse_output_gaussian(),
+                 font=('Segoe UI', 9), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=4, cursor='hand2').pack(side='left')
+        
+        # TICT Rotation Parameters (old style - advanced mode only)
+        params_card = self._gaussian_create_card(scrollable_frame, 'TICT Rotation Parameters (1-Based Atom Indices)')
+        params_card.pack(fill='x', padx=15, pady=8)
+        params_content = tk.Frame(params_card, bg=self.colors['card'])
+        params_content.pack(fill='x', padx=10, pady=10)
+        params_content.columnconfigure(1, weight=1)
+        
+        row = 0
+        tk.Label(params_content, text='Rotation Axis (2 atoms, e.g., "3,10"):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_gaussian['AXIS'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch A Indices:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_gaussian['BRANCH_A'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch A Step (degrees):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_gaussian['BRANCH_A_STEP'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch B Indices:', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_gaussian['BRANCH_B'], font=('Segoe UI', 9)).grid(row=row, column=1, sticky='ew', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Branch B Step (degrees):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_gaussian['BRANCH_B_STEP'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        tk.Label(params_content, text='Number of Steps (0 to N inclusive):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(params_content, textvariable=self.tict_vars_gaussian['NUM_STEPS'], font=('Segoe UI', 9), width=20).grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        row += 1
+        
+        help_text = """Enter atom indices using 1-based indexing (as in GaussView).
+You can use ranges (e.g., "12-13") and comma-separated lists (e.g., "11,18,22").
+Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
+        tk.Label(params_content, text=help_text, font=('Segoe UI', 8), bg=self.colors['card'],
+                fg=self.colors['text_light'], justify='left', wraplength=600).grid(row=row, column=0, columnspan=2, sticky='w', padx=5, pady=(10,5))
+        
+        # Status and Log
+        log_card = self._gaussian_create_card(scrollable_frame, 'Status & Log')
+        log_card.pack(fill='both', expand=True, padx=15, pady=8)
+        log_content = tk.Frame(log_card, bg=self.colors['card'])
+        log_content.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        self.tict_log_gaussian = scrolledtext.ScrolledText(log_content, wrap='word', font=('Consolas', 10),
+                                                  bg='white', fg='black', height=12)
+        self.tict_log_gaussian.pack(fill='both', expand=True)
+        self.tict_log_gaussian.insert('1.0', 'Ready. Select input file and set parameters, then click "Generate Rotated Geometries".\n')
+        
+        # Generate Button (moved to be last, after status log)
+        button_card = self._gaussian_create_card(scrollable_frame, None)
+        button_card.pack(fill='x', padx=15, pady=8)
+        button_frame = tk.Frame(button_card, bg=self.colors['card'])
+        button_frame.pack(fill='x', padx=10, pady=10)
+        
+        tk.Button(button_frame, text='Generate Rotated Geometries (Gaussian .com)', command=lambda: self._tict_generate_gaussian(),
+                 font=('Segoe UI', 11, 'bold'), bg=self.colors['accent'], fg='white',
+                 relief='flat', padx=25, pady=10, cursor='hand2').pack(side='left', padx=5)
+        
+        if not TICT_AVAILABLE:
+            warning_label = tk.Label(button_frame, text='⚠️ TICT module not available', 
+                                    font=('Segoe UI', 9), bg=self.colors['card'], fg='red')
+            warning_label.pack(side='left', padx=10)
+        
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+        
+        # Watermark
+        watermark_frame = tk.Frame(scrollable_frame, bg=self.colors['bg'])
+        watermark_frame.pack(fill='x', pady=20)
+        watermark_label = tk.Label(watermark_frame, text='Designed by Abedi', 
+                                   font=('Segoe UI', 8, 'italic'), 
+                                   bg=self.colors['bg'], fg=self.colors['text_light'])
+        watermark_label.pack()
+    
+    def _gaussian_tab_ai_assistant(self):
+        """Gaussian AI Assistant Tab with Gemini Pro"""
+        f = tk.Frame(self.notebook, bg=self.colors['bg'])
+        self.notebook.add(f, text='🤖 AI Assistant')
+        
+        # Scrollable container
+        canvas = tk.Canvas(f, bg=self.colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(f, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg'])
+        
+        def update_scroll_region(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        def on_canvas_configure(event):
+            canvas_width = event.width
+            if canvas.find_all():
+                canvas.itemconfig(canvas.find_all()[0], width=canvas_width)
+        
+        scrollable_frame.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", on_canvas_configure)
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # Settings Section
+        settings_card = self._gaussian_create_card(scrollable_frame, 'AI Settings')
+        settings_card.pack(fill='x', padx=15, pady=8)
+        
+        settings_content = tk.Frame(settings_card, bg=self.colors['card'])
+        settings_content.pack(fill='x', padx=10, pady=10)
+        
+        # Check Ollama status
+        try:
+            from ai_assistant import OLLAMA_AVAILABLE, GEMINI_AVAILABLE
+            ollama_status = "✓ Available" if OLLAMA_AVAILABLE else "✗ Not installed"
+            gemini_status = "✓ Available" if GEMINI_AVAILABLE else "✗ Not installed"
+        except:
+            ollama_status = "Unknown"
+            gemini_status = "Unknown"
+        
+        status_row = tk.Frame(settings_content, bg=self.colors['card'])
+        status_row.pack(fill='x', pady=5)
+        tk.Label(status_row, text='Ollama (Free, Local):', font=('Segoe UI', 10, 'bold'),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        tk.Label(status_row, text=ollama_status, font=('Segoe UI', 10),
+                bg=self.colors['card'], fg='green' if '✓' in ollama_status else 'red').pack(side='left', padx=(0,20))
+        
+        if not OLLAMA_AVAILABLE:
+            import platform
+            if platform.system() == 'Darwin':  # macOS
+                install_text = 'Install: Download from https://ollama.com/download or: brew install ollama'
+            else:  # Linux
+                install_text = 'Install: curl -fsSL https://ollama.com/install.sh | sh'
+            install_label = tk.Label(status_row, text=install_text, 
+                                    font=('Segoe UI', 8), bg=self.colors['card'], fg=self.colors['text_light'])
+            install_label.pack(side='left', padx=10)
+        
+        # Gemini API Key (optional)
+        gemini_row = tk.Frame(settings_content, bg=self.colors['card'])
+        gemini_row.pack(fill='x', pady=5)
+        tk.Label(gemini_row, text='Gemini API Key (Optional):', font=('Segoe UI', 10),
+                bg=self.colors['card'], fg=self.colors['text']).pack(side='left', padx=(0,10))
+        
+        if not hasattr(self, 'gemini_api_key_var'):
+            self.gemini_api_key_var = tk.StringVar()
+            try:
+                from ai_assistant import load_gemini_api_key
+                existing_key = load_gemini_api_key()
+                if existing_key:
+                    self.gemini_api_key_var.set(existing_key)
+            except:
+                pass
+        
+        api_entry = tk.Entry(gemini_row, textvariable=self.gemini_api_key_var, show='*', width=40, font=('Segoe UI', 9))
+        api_entry.pack(side='left', fill='x', expand=True, padx=(0,5))
+        tk.Button(gemini_row, text='Save', command=lambda: self._save_gemini_key(api_entry.get()),
+                 font=('Segoe UI', 9), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=4, cursor='hand2').pack(side='left')
+        tk.Label(gemini_row, text='Get free key: https://makersuite.google.com/app/apikey', 
+                font=('Segoe UI', 8), bg=self.colors['card'], fg=self.colors['text_light']).pack(side='left', padx=10)
+        
+        # Chat Interface
+        chat_card = self._gaussian_create_card(scrollable_frame, 'Chat with AI Assistant')
+        chat_card.pack(fill='both', expand=True, padx=15, pady=8)
+        
+        chat_content = tk.Frame(chat_card, bg=self.colors['card'])
+        chat_content.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Chat display area
+        chat_display = scrolledtext.ScrolledText(chat_content, wrap='word', font=('Segoe UI', 10),
+                                                  bg='white', fg='black', height=20, state=tk.DISABLED)
+        chat_display.pack(fill='both', expand=True, pady=(0,10))
+        chat_display.tag_config('user', foreground='blue', font=('Segoe UI', 10, 'bold'))
+        chat_display.tag_config('assistant', foreground='green', font=('Segoe UI', 10))
+        chat_display.tag_config('error', foreground='red', font=('Segoe UI', 10))
+        
+        # Initial message
+        chat_display.config(state=tk.NORMAL)
+        chat_display.insert('1.0', '🤖 AI Assistant: Hello! I can help you set up Gaussian quantum chemistry calculations.\n\n'
+                                   'Tell me what you want to calculate, and I\'ll guide you through the process.\n\n'
+                                   'Examples:\n'
+                                   '- "I want to optimize a benzene molecule in DMSO"\n'
+                                   '- "Calculate excited states for a TICT molecule"\n'
+                                   '- "Set up a full workflow for fluorescence calculations"\n\n', 'assistant')
+        chat_display.config(state=tk.DISABLED)
+        
+        # Input area
+        input_frame = tk.Frame(chat_content, bg=self.colors['card'])
+        input_frame.pack(fill='x')
+        
+        input_entry = tk.Entry(input_frame, font=('Segoe UI', 10))
+        input_entry.pack(side='left', fill='x', expand=True, padx=(0,5))
+        input_entry.bind('<Return>', lambda e: self._send_ai_message(input_entry, chat_display, 'gaussian'))
+        
+        button_frame = tk.Frame(input_frame, bg=self.colors['card'])
+        button_frame.pack(side='left')
+        
+        tk.Button(button_frame, text='Send', command=lambda: self._send_ai_message(input_entry, chat_display, 'gaussian'),
+                 font=('Segoe UI', 9, 'bold'), bg=self.colors['accent'], fg='white',
+                 relief='flat', padx=20, pady=5, cursor='hand2').pack(side='left', padx=2)
+        tk.Button(button_frame, text='Generate Files', command=lambda: self._generate_files_from_ai_conversation(chat_display, 'gaussian'),
+                 font=('Segoe UI', 9, 'bold'), bg=self.colors['primary'], fg='white',
+                 relief='flat', padx=15, pady=5, cursor='hand2').pack(side='left', padx=2)
+        tk.Button(button_frame, text='Clear', command=lambda: self._clear_ai_chat(chat_display),
+                 font=('Segoe UI', 9), bg=self.colors['secondary'], fg='white',
+                 relief='flat', padx=15, pady=5, cursor='hand2').pack(side='left', padx=2)
+        
+        # Store references
+        self.gaussian_chat_display = chat_display
+        self.gaussian_chat_input = input_entry
+        
+        canvas.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+        
+        # Watermark
+        watermark_frame = tk.Frame(scrollable_frame, bg=self.colors['bg'])
+        watermark_frame.pack(fill='x', pady=20)
+        watermark_label = tk.Label(watermark_frame, text='Powered by Ollama (Free) / Gemini | Designed by Abedi', 
+                                   font=('Segoe UI', 8, 'italic'), 
+                                   bg=self.colors['bg'], fg=self.colors['text_light'])
+        watermark_label.pack()
+    
     def _gaussian_tab_generate(self):
         """Build Gaussian Generate tab"""
         f = tk.Frame(self.notebook, bg=self.colors['bg'])
@@ -4030,6 +4643,381 @@ Example: D 4 5 6 7 180.0 F    (Freeze dihedral angle at 180 degrees)"""
         
         self.gaussian_status.config(text='Reset to defaults')
         messagebox.showinfo('Reset Complete', 'All fields have been reset to default values.')
+    
+    # ========== TICT Helper Methods ==========
+    def _tict_browse_input_gaussian(self):
+        """Browse for input .com file for TICT rotation (Gaussian)"""
+        path = filedialog.askopenfilename(title='Select input .com file', filetypes=[('Gaussian COM files', '*.com'), ('All files', '*.*')])
+        if path:
+            self.tict_vars_gaussian['INPUT_FILE'].set(path)
+            if not self.tict_vars_gaussian['OUTPUT_DIR'].get():
+                self.tict_vars_gaussian['OUTPUT_DIR'].set(str(Path(path).parent))
+    
+    def _tict_browse_output_gaussian(self):
+        """Browse for output directory for TICT rotation (Gaussian)"""
+        path = filedialog.askdirectory(title='Select output directory for rotated geometries')
+        if path:
+            self.tict_vars_gaussian['OUTPUT_DIR'].set(path)
+    
+    def _tict_generate_gaussian(self):
+        """Generate TICT rotated geometries for Gaussian"""
+        if not TICT_AVAILABLE:
+            messagebox.showerror('TICT Module Error', 'TICT rotation module is not available.')
+            return
+        
+        self.tict_log_gaussian.delete('1.0', tk.END)
+        self.tict_log_gaussian.insert('1.0', 'Starting TICT rotation generation...\n\n')
+        
+        input_file = self.tict_vars_gaussian['INPUT_FILE'].get().strip()
+        output_dir = self.tict_vars_gaussian['OUTPUT_DIR'].get().strip()
+        
+        if not input_file or not os.path.exists(input_file):
+            self.tict_log_gaussian.insert(tk.END, f'ERROR: Please select a valid input file.\n')
+            return
+        
+        if not output_dir:
+            self.tict_log_gaussian.insert(tk.END, 'ERROR: Please select an output directory.\n')
+            return
+        
+        try:
+            # TICT rotation mode (old style)
+            from tict_rotation import generate_tict_rotations
+            
+            axis_str = self.tict_vars_gaussian['AXIS'].get().strip()
+            branch_a_str = self.tict_vars_gaussian['BRANCH_A'].get().strip()
+            branch_a_step = float(self.tict_vars_gaussian['BRANCH_A_STEP'].get().strip())
+            branch_b_str = self.tict_vars_gaussian['BRANCH_B'].get().strip()
+            branch_b_step = float(self.tict_vars_gaussian['BRANCH_B_STEP'].get().strip())
+            num_steps = int(self.tict_vars_gaussian['NUM_STEPS'].get().strip())
+            
+            base_name = Path(input_file).stem
+            tict_output_dir = os.path.join(output_dir, f"{base_name}_tict_rotations")
+            
+            success, message, files_created = generate_tict_rotations(
+                input_file=input_file,
+                output_dir=tict_output_dir,
+                axis_str=axis_str,
+                branch_a_str=branch_a_str,
+                branch_a_step_deg=branch_a_step,
+                branch_b_str=branch_b_str,
+                branch_b_step_deg=branch_b_step,
+                num_steps=num_steps,
+                file_format="gaussian"
+            )
+        except ValueError as e:
+            self.tict_log_gaussian.insert(tk.END, f'ERROR: Invalid parameter value: {e}\n')
+            return
+        except Exception as e:
+            self.tict_log_gaussian.insert(tk.END, f'ERROR: {str(e)}\n')
+            messagebox.showerror('TICT Rotation Error', str(e))
+            return
+        
+        if success:
+            self.tict_log_gaussian.insert(tk.END, f'\n{message}\n')
+            self.tict_log_gaussian.insert(tk.END, f'\n✅ Success! Rotated geometries saved to:\n  {tict_output_dir}\n')
+            messagebox.showinfo('TICT Rotation Complete', f'Successfully generated {len(files_created)} rotated geometry files!')
+        else:
+            self.tict_log_gaussian.insert(tk.END, f'\n❌ ERROR: {message}\n')
+            messagebox.showerror('TICT Rotation Error', message)
+        
+        self.tict_log_gaussian.see(tk.END)
+    
+    def _tict_browse_input_orca(self):
+        """Browse for input .xyz or .inp file for TICT rotation (ORCA)"""
+        path = filedialog.askopenfilename(title='Select input .xyz or .inp file', 
+                                         filetypes=[('XYZ files', '*.xyz'), ('ORCA input files', '*.inp'), ('All files', '*.*')])
+        if path:
+            self.tict_vars_orca['INPUT_FILE'].set(path)
+            if not self.tict_vars_orca['OUTPUT_DIR'].get():
+                self.tict_vars_orca['OUTPUT_DIR'].set(str(Path(path).parent))
+    
+    def _tict_browse_output_orca(self):
+        """Browse for output directory for TICT rotation (ORCA)"""
+        path = filedialog.askdirectory(title='Select output directory for rotated geometries')
+        if path:
+            self.tict_vars_orca['OUTPUT_DIR'].set(path)
+    
+    def _tict_generate_orca(self):
+        """Generate TICT rotated geometries for ORCA"""
+        if not TICT_AVAILABLE:
+            messagebox.showerror('TICT Module Error', 'TICT rotation module is not available.')
+            return
+        
+        self.tict_log_orca.delete('1.0', tk.END)
+        self.tict_log_orca.insert('1.0', 'Starting TICT rotation generation for ORCA...\n\n')
+        
+        input_file = self.tict_vars_orca['INPUT_FILE'].get().strip()
+        output_dir = self.tict_vars_orca['OUTPUT_DIR'].get().strip()
+        
+        if not input_file or not os.path.exists(input_file):
+            self.tict_log_orca.insert(tk.END, f'ERROR: Please select a valid input file.\n')
+            return
+        
+        if not output_dir:
+            self.tict_log_orca.insert(tk.END, 'ERROR: Please select an output directory.\n')
+            return
+        
+        try:
+            axis_str = self.tict_vars_orca['AXIS'].get().strip()
+            branch_a_str = self.tict_vars_orca['BRANCH_A'].get().strip()
+            branch_a_step = float(self.tict_vars_orca['BRANCH_A_STEP'].get().strip())
+            branch_b_str = self.tict_vars_orca['BRANCH_B'].get().strip()
+            branch_b_step = float(self.tict_vars_orca['BRANCH_B_STEP'].get().strip())
+            num_steps = int(self.tict_vars_orca['NUM_STEPS'].get().strip())
+        except ValueError as e:
+            self.tict_log_orca.insert(tk.END, f'ERROR: Invalid parameter value: {e}\n')
+            return
+        
+        base_name = Path(input_file).stem
+        tict_output_dir = os.path.join(output_dir, f"{base_name}_tict_rotations")
+        
+        success, message, files_created = generate_tict_rotations(
+            input_file=input_file,
+            output_dir=tict_output_dir,
+            axis_str=axis_str,
+            branch_a_str=branch_a_str,
+            branch_a_step_deg=branch_a_step,
+            branch_b_str=branch_b_str,
+            branch_b_step_deg=branch_b_step,
+            num_steps=num_steps,
+            file_format="orca"
+        )
+        
+        if success:
+            self.tict_log_orca.insert(tk.END, f'\n{message}\n')
+            self.tict_log_orca.insert(tk.END, f'\n✅ Success! Rotated .xyz geometries saved to:\n  {tict_output_dir}\n')
+            messagebox.showinfo('TICT Rotation Complete', f'Successfully generated {len(files_created)} rotated .xyz files for ORCA!')
+        else:
+            self.tict_log_orca.insert(tk.END, f'\n❌ ERROR: {message}\n')
+            messagebox.showerror('TICT Rotation Error', message)
+        
+        self.tict_log_orca.see(tk.END)
+    
+    # ========== AI Assistant Helper Methods ==========
+    def _save_gemini_key(self, api_key: str):
+        """Save Gemini API key"""
+        try:
+            from ai_assistant import save_gemini_api_key
+            success, error_msg = save_gemini_api_key(api_key)
+            if success:
+                messagebox.showinfo('Success', 'API key saved successfully!')
+                # Update the StringVar to reflect the saved key (in case it was modified)
+                if hasattr(self, 'gemini_api_key_var'):
+                    self.gemini_api_key_var.set(api_key.strip())
+                if hasattr(self, 'gemini_api_key_var_orca'):
+                    self.gemini_api_key_var_orca.set(api_key.strip())
+            else:
+                error_text = error_msg if error_msg else 'Failed to save API key.'
+                messagebox.showerror('Error', error_text)
+        except Exception as e:
+            messagebox.showerror('Error', f'Failed to save API key: {str(e)}')
+    
+    def _send_ai_message(self, input_entry, chat_display, software: str):
+        """Send message to AI assistant"""
+        user_message = input_entry.get().strip()
+        if not user_message:
+            return
+        
+        # Clear input
+        input_entry.delete(0, tk.END)
+        
+        # Add user message to chat
+        chat_display.config(state=tk.NORMAL)
+        chat_display.insert(tk.END, f'\n👤 You: {user_message}\n\n', 'user')
+        chat_display.see(tk.END)
+        chat_display.config(state=tk.DISABLED)
+        chat_display.update()
+        
+        # Initialize AI assistant if needed
+        if not hasattr(self, f'ai_assistant_{software}'):
+            try:
+                from ai_assistant import QuantumChemistryAssistant, load_gemini_api_key, OLLAMA_AVAILABLE
+                # Prefer Ollama (free, no API key needed, no quota limits)
+                api_key = load_gemini_api_key()  # Optional, only needed if Ollama not available
+                
+                try:
+                    # Try Ollama first (free, no API key, unlimited)
+                    setattr(self, f'ai_assistant_{software}', QuantumChemistryAssistant(api_key=api_key, software=software, use_ollama=True))
+                    # Show a message that we're using Ollama
+                    chat_display.config(state=tk.NORMAL)
+                    if not chat_display.get('1.0', tk.END).strip():
+                        chat_display.insert(tk.END, '✅ Using Ollama (free, local, unlimited)\n\n', 'assistant')
+                        chat_display.config(state=tk.DISABLED)
+                        chat_display.update()
+                        chat_display.config(state=tk.NORMAL)
+                except Exception as e:
+                    if "Ollama" in str(e) or "ollama" in str(e).lower():
+                        # Ollama not available, try Gemini
+                        if not api_key:
+                            chat_display.config(state=tk.NORMAL)
+                            chat_display.insert(tk.END, '⚠️ Ollama not available. Install Ollama (free, recommended):\n'
+                                                       'Windows: Download from https://ollama.com/download\n'
+                                                       'Mac/Linux: curl -fsSL https://ollama.com/install.sh | sh\n'
+                                                       'Then run: ollama pull llama3.1:8b\n\n'
+                                                       'Or get Gemini key: https://makersuite.google.com/app/apikey\n\n', 'error')
+                            chat_display.config(state=tk.DISABLED)
+                            return
+                        setattr(self, f'ai_assistant_{software}', QuantumChemistryAssistant(api_key=api_key, software=software, use_ollama=False))
+                    else:
+                        raise
+            except Exception as e:
+                chat_display.config(state=tk.NORMAL)
+                chat_display.insert(tk.END, f'❌ Error initializing AI: {str(e)}\n\n', 'error')
+                chat_display.config(state=tk.DISABLED)
+                return
+        
+        # Get AI assistant
+        assistant = getattr(self, f'ai_assistant_{software}')
+        
+        # Check if user wants to generate files
+        if user_message.lower().strip() in ['generate files', 'generate', 'create files', 'go']:
+            self._generate_files_from_ai_conversation(chat_display, software)
+            return
+        
+        # Send message and get response
+        try:
+            response, success = assistant.send_message(user_message)
+            
+            chat_display.config(state=tk.NORMAL)
+            if success:
+                # Check if response contains generation marker
+                if "GENERATE_FILES_START" in response and "GENERATE_FILES_END" in response:
+                    # Extract config and generate files
+                    config = assistant.extract_generation_config(response)
+                    if config:
+                        chat_display.insert(tk.END, f'🤖 AI Assistant: I have all the information. Generating files now...\n\n', 'assistant')
+                        chat_display.config(state=tk.DISABLED)
+                        chat_display.update()
+                        self._generate_files_from_ai_config(config, chat_display, software)
+                        return
+                    else:
+                        chat_display.insert(tk.END, f'🤖 AI Assistant: {response}\n\n', 'assistant')
+                else:
+                    chat_display.insert(tk.END, f'🤖 AI Assistant: {response}\n\n', 'assistant')
+            else:
+                # Check if it's a quota error suggesting Ollama
+                if "quota exceeded" in response.lower() or "install ollama" in response.lower():
+                    chat_display.insert(tk.END, f'⚠️ {response}\n\n', 'error')
+                    # Try to reinitialize with Ollama if available
+                    try:
+                        from ai_assistant import OLLAMA_AVAILABLE
+                        if OLLAMA_AVAILABLE:
+                            chat_display.insert(tk.END, '🔄 Attempting to switch to Ollama (free, local)...\n\n', 'assistant')
+                            chat_display.config(state=tk.DISABLED)
+                            chat_display.update()
+                            # Delete current assistant and recreate with Ollama
+                            if hasattr(self, f'ai_assistant_{software}'):
+                                delattr(self, f'ai_assistant_{software}')
+                            from ai_assistant import QuantumChemistryAssistant
+                            setattr(self, f'ai_assistant_{software}', QuantumChemistryAssistant(api_key=None, software=software, use_ollama=True))
+                            # Retry the message
+                            assistant = getattr(self, f'ai_assistant_{software}')
+                            response, success = assistant.send_message(user_message)
+                            chat_display.config(state=tk.NORMAL)
+                            if success:
+                                chat_display.insert(tk.END, f'✅ Switched to Ollama successfully!\n\n🤖 AI Assistant: {response}\n\n', 'assistant')
+                            else:
+                                chat_display.insert(tk.END, f'⚠️ {response}\n\n', 'error')
+                    except Exception:
+                        chat_display.insert(tk.END, f'❌ {response}\n\n', 'error')
+                else:
+                    chat_display.insert(tk.END, f'❌ {response}\n\n', 'error')
+            chat_display.config(state=tk.DISABLED)
+            chat_display.see(tk.END)
+        except Exception as e:
+            chat_display.config(state=tk.NORMAL)
+            chat_display.insert(tk.END, f'❌ Error: {str(e)}\n\n', 'error')
+            chat_display.config(state=tk.DISABLED)
+    
+    def _clear_ai_chat(self, chat_display):
+        """Clear AI chat"""
+        chat_display.config(state=tk.NORMAL)
+        chat_display.delete('1.0', tk.END)
+        software = 'gaussian' if hasattr(self, 'gaussian_chat_display') and chat_display == self.gaussian_chat_display else 'orca'
+        chat_display.insert('1.0', f'🤖 AI Assistant: Chat cleared. How can I help you set up {software.upper()} calculations?\n\n', 'assistant')
+        chat_display.config(state=tk.DISABLED)
+        
+        # Reset conversation if assistant exists
+        if hasattr(self, f'ai_assistant_{software}'):
+            getattr(self, f'ai_assistant_{software}').reset_conversation()
+    
+    def _generate_files_from_ai_conversation(self, chat_display, software: str):
+        """Extract configuration from AI conversation and generate files"""
+        if not hasattr(self, f'ai_assistant_{software}'):
+            chat_display.config(state=tk.NORMAL)
+            chat_display.insert(tk.END, '❌ Error: No active conversation. Please chat with the AI first.\n\n', 'error')
+            chat_display.config(state=tk.DISABLED)
+            return
+        
+        assistant = getattr(self, f'ai_assistant_{software}')
+        
+        # Ask AI to provide configuration in structured format
+        chat_display.config(state=tk.NORMAL)
+        chat_display.insert(tk.END, '\n👤 You: Please provide the configuration as JSON so I can generate the files.\n\n', 'user')
+        chat_display.config(state=tk.DISABLED)
+        chat_display.update()
+        
+        try:
+            response, success = assistant.send_message("Please output the complete configuration as JSON wrapped in GENERATE_FILES_START and GENERATE_FILES_END markers. CRITICAL: You MUST include INPUT_FILE and OUTPUT_DIR fields - extract these from our conversation. Include all parameters: INPUT_FILE (REQUIRED), OUTPUT_DIR (REQUIRED), MODE, STEP, METHOD/BASIS (or FUNCTIONAL/BASIS for Gaussian), SOLVENT_MODEL, SOLVENT_NAME, CHARGE, MULT, NPROC/NPROCS, MEM/MAXCORE_MB, SCHEDULER, and any other relevant parameters. For TICT scans, also include: CALCULATION_TYPE, DIHEDRAL_ATOMS, SCAN_RANGE, NUM_STEPS.")
+            
+            if success:
+                config = assistant.extract_generation_config(response)
+                if config:
+                    chat_display.config(state=tk.NORMAL)
+                    chat_display.insert(tk.END, f'🤖 AI Assistant: Configuration extracted. Generating files...\n\n', 'assistant')
+                    chat_display.config(state=tk.DISABLED)
+                    chat_display.update()
+                    self._generate_files_from_ai_config(config, chat_display, software)
+                else:
+                    chat_display.config(state=tk.NORMAL)
+                    chat_display.insert(tk.END, f'🤖 AI Assistant: {response}\n\n', 'assistant')
+                    chat_display.insert(tk.END, '⚠️ Could not extract configuration from response. Please ensure the AI provided a valid JSON configuration.\n\n', 'error')
+                    chat_display.config(state=tk.DISABLED)
+            else:
+                chat_display.config(state=tk.NORMAL)
+                chat_display.insert(tk.END, f'❌ Error: {response}\n\n', 'error')
+                chat_display.config(state=tk.DISABLED)
+        except Exception as e:
+            chat_display.config(state=tk.NORMAL)
+            chat_display.insert(tk.END, f'❌ Error: {str(e)}\n\n', 'error')
+            chat_display.config(state=tk.DISABLED)
+    
+    def _generate_files_from_ai_config(self, config: Dict, chat_display, software: str):
+        """Generate files from AI-extracted configuration"""
+        try:
+            from ai_file_generator import generate_files_from_ai_config
+            
+            success, message, generated_files = generate_files_from_ai_config(config, software)
+            
+            chat_display.config(state=tk.NORMAL)
+            if success:
+                chat_display.insert(tk.END, f'✅ {message}\n\n', 'assistant')
+                chat_display.insert(tk.END, f'Generated {len(generated_files)} file(s).\n\n', 'assistant')
+                
+                # Open output directory
+                output_dir = config.get('OUTPUT_DIR', '')
+                if output_dir and os.path.exists(output_dir):
+                    try:
+                        if sys.platform == 'darwin':
+                            subprocess.run(['open', output_dir])
+                        elif sys.platform == 'win32':
+                            os.startfile(output_dir)
+                        else:
+                            subprocess.run(['xdg-open', output_dir])
+                    except:
+                        pass
+                
+                messagebox.showinfo('Files Generated', message)
+            else:
+                chat_display.insert(tk.END, f'❌ Error: {message}\n\n', 'error')
+                messagebox.showerror('Generation Error', message)
+            chat_display.config(state=tk.DISABLED)
+            chat_display.see(tk.END)
+        except Exception as e:
+            chat_display.config(state=tk.NORMAL)
+            chat_display.insert(tk.END, f'❌ Error generating files: {str(e)}\n\n', 'error')
+            chat_display.config(state=tk.DISABLED)
+            messagebox.showerror('Error', f'Failed to generate files: {str(e)}')
 
 if __name__ == "__main__":
     root = tk.Tk()
