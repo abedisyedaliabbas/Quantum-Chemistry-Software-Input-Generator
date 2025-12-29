@@ -104,30 +104,65 @@ def orca_natural_key(s: str):
 
 def orca_find_inputs(pattern: str, input_type: str = "xyz") -> List[Path]:
     """Find input files based on type: xyz, com, log"""
+    if not pattern or not pattern.strip():
+        return []
+    
+    pattern = pattern.strip()
     path = Path(pattern)
+    
+    # Normalize path separators for Windows
+    if os.sep == '\\':
+        pattern = pattern.replace('/', '\\')
+    
     extensions = {
         "xyz": [".xyz"],
         "com": [".com"],
         "log": [".log"],
     }.get(input_type, [".xyz", ".com"])
     
+    files = []
+    
+    # Check if it's a directory
     if path.exists() and path.is_dir():
-        files = []
         for ext in extensions:
             files.extend(path.glob(f"*{ext}"))
         files = sorted(files, key=lambda x: orca_natural_key(x.name))
+    # Check if it's a single file
+    elif path.exists() and path.is_file():
+        if path.suffix.lower() in extensions:
+            files = [path]
     else:
-        files = [Path(m) for m in glob.glob(pattern)]
-        files = sorted([p for p in files if p.is_file() and p.suffix.lower() in extensions],
-                       key=lambda x: orca_natural_key(x.name))
+        # Try as glob pattern
+        glob_pattern = pattern.replace('\\', '/')
+        try:
+            matches = glob.glob(glob_pattern)
+            files = [Path(m) for m in matches]
+            files = [p for p in files if p.is_file() and p.suffix.lower() in extensions]
+            files = sorted(files, key=lambda x: orca_natural_key(x.name))
+        except Exception:
+            # If glob fails, try as direct path
+            if path.exists() and path.is_file() and path.suffix.lower() in extensions:
+                files = [path]
+    
     return files
 
 def orca_parse_com(lines: List[str]) -> Tuple[str, List[str]]:
     """Parse Gaussian .com -> ('charge mult', xyz-lines)."""
+    if not lines:
+        raise ValueError("File is empty")
+    
     empties = [i for i, L in enumerate(lines) if not L.strip()]
-    coords = lines[empties[1] + 1 :] if len(empties) >= 2 else lines[:]
+    
+    if len(empties) >= 2:
+        coords = lines[empties[1] + 1 :]
+    elif len(empties) == 1:
+        coords = lines[empties[0] + 1 :]
+    else:
+        coords = lines[:]
+    
     atom_pat = re.compile(r"^[A-Za-z]{1,2}\s+[-\d]")
     cm = "0 1"
+    
     for i, L in enumerate(coords):
         t = L.strip()
         if not t: continue
@@ -136,20 +171,47 @@ def orca_parse_com(lines: List[str]) -> Tuple[str, List[str]]:
                 cm = t
                 coords = coords[i + 1 :]
             break
-    while coords and not coords[-1].strip():
-        coords.pop()
-    return cm, coords
+    
+    # Extract coordinate lines
+    coord_lines = []
+    for L in coords:
+        t = L.strip()
+        if not t:
+            continue
+        if atom_pat.match(t):
+            coord_lines.append(t)
+        elif coord_lines:
+            break
+    
+    while coord_lines and not coord_lines[-1].strip():
+        coord_lines.pop()
+    
+    if not coord_lines:
+        raise ValueError("No coordinates found in file. Expected format: element symbol followed by X Y Z coordinates.")
+    
+    return cm, coord_lines
 
 def orca_parse_xyz(lines: List[str]) -> Tuple[str, List[str]]:
     return "0 1", [L for L in lines[2:] if L.strip()]
 
 def orca_extract_geom(p: Path, input_type: str = None) -> Tuple[str, List[str]]:
     """Extract geometry from file based on type"""
+    if not p.exists():
+        raise FileNotFoundError(f"File not found: {p}")
+    
     if input_type is None:
         input_type = p.suffix.lower().lstrip('.')
     
+    try:
+        lines = read_lines(p)
+    except Exception as e:
+        raise IOError(f"Could not read file {p}: {e}")
+    
     if input_type == "xyz" or p.suffix.lower() == ".xyz":
-        return orca_parse_xyz(read_lines(p))
+        try:
+            return orca_parse_xyz(lines)
+        except Exception as e:
+            raise ValueError(f"Error parsing XYZ file {p}: {e}")
     elif input_type == "log" or p.suffix.lower() == ".log":
         # Use Gaussian log parser
         if GAUSSIAN_AVAILABLE:
@@ -161,7 +223,10 @@ def orca_extract_geom(p: Path, input_type: str = None) -> Tuple[str, List[str]]:
         else:
             raise ValueError("Gaussian modules not available for .log file parsing")
     else:  # .com or default
-        return orca_parse_com(read_lines(p))
+        try:
+            return orca_parse_com(lines)
+        except Exception as e:
+            raise ValueError(f"Error parsing .com file {p}: {e}")
 
 def orca_cm_tuple(cm: str) -> Tuple[int,int]:
     m = re.match(r"^\s*(-?\d+)\s+(-?\d+)\s*$", cm or "")
@@ -4098,6 +4163,7 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
                 self.gaussian_status.config(text='No inputs')
                 return
             files_data = []
+            errors = []
             for p in files[:3]:
                 try:
                     cm, coords, base = parse_gaussian_log(p)
@@ -4110,7 +4176,13 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
                             base = cleaned
                     files_data.append((base, cm, coords))
                 except Exception as e:
-                    pass
+                    errors.append(f"{p.name}: {str(e)}")
+            
+            if errors and not files_data:
+                self.gaussian_preview.delete('1.0','end')
+                self.gaussian_preview.insert('1.0', f'Errors reading log files:\n' + '\n'.join(errors[:5]))
+                self.gaussian_status.config(text='Error reading files')
+                return
         else:
             files = find_geoms(cfg['INPUTS'], input_type='com')
             if not files:
@@ -4119,13 +4191,30 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
                 self.gaussian_status.config(text='No inputs')
                 return
             files_data = []
+            errors = []
             for p in files[:3]:
-                cm, coords = extract_cm_coords(read_lines(p))
-                cm = cm_override(cm, cfg['CHARGE'], cfg['MULT'])
-                base = p.stem
-                if cfg['REMOVE_PREFIX'] or cfg['REMOVE_SUFFIX']:
-                    base = remove_prefix_suffix(p.name, cfg['REMOVE_PREFIX'], cfg['REMOVE_SUFFIX']).replace('.com', '')
-                files_data.append((base, cm, coords))
+                try:
+                    lines = read_lines(p)
+                    if not lines:
+                        errors.append(f"{p.name}: File is empty")
+                        continue
+                    cm, coords = extract_cm_coords(lines)
+                    if not coords:
+                        errors.append(f"{p.name}: No coordinates found in file")
+                        continue
+                    cm = cm_override(cm, cfg['CHARGE'], cfg['MULT'])
+                    base = p.stem
+                    if cfg['REMOVE_PREFIX'] or cfg['REMOVE_SUFFIX']:
+                        base = remove_prefix_suffix(p.name, cfg['REMOVE_PREFIX'], cfg['REMOVE_SUFFIX']).replace('.com', '')
+                    files_data.append((base, cm, coords))
+                except Exception as e:
+                    errors.append(f"{p.name}: {str(e)}")
+            
+            if errors and not files_data:
+                self.gaussian_preview.delete('1.0','end')
+                self.gaussian_preview.insert('1.0', f'Errors reading .com files:\n' + '\n'.join(errors[:5]))
+                self.gaussian_status.config(text='Error reading files')
+                return
         
         if cfg.get('SOC_ENABLE', False):
             chunks = []
@@ -4270,13 +4359,31 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
                 messagebox.showerror('No inputs', 'No .com files found.')
                 return
             files_data = []
+            errors = []
             for p in files:
-                base = p.stem
-                if cfg['REMOVE_PREFIX'] or cfg['REMOVE_SUFFIX']:
-                    base = remove_prefix_suffix(p.name, cfg['REMOVE_PREFIX'], cfg['REMOVE_SUFFIX']).replace('.com', '')
-                cm, coords = extract_cm_coords(read_lines(p))
-                cm = cm_override(cm, cfg['CHARGE'], cfg['MULT'])
-                files_data.append((base, cm, coords))
+                try:
+                    lines = read_lines(p)
+                    if not lines:
+                        errors.append(f"{p.name}: File is empty")
+                        continue
+                    cm, coords = extract_cm_coords(lines)
+                    if not coords:
+                        errors.append(f"{p.name}: No coordinates found in file")
+                        continue
+                    cm = cm_override(cm, cfg['CHARGE'], cfg['MULT'])
+                    base = p.stem
+                    if cfg['REMOVE_PREFIX'] or cfg['REMOVE_SUFFIX']:
+                        base = remove_prefix_suffix(p.name, cfg['REMOVE_PREFIX'], cfg['REMOVE_SUFFIX']).replace('.com', '')
+                    files_data.append((base, cm, coords))
+                except Exception as e:
+                    errors.append(f"{p.name}: {str(e)}")
+            
+            if errors and not files_data:
+                messagebox.showerror('File Reading Errors', 'Errors reading .com files:\n' + '\n'.join(errors[:10]))
+                return
+            elif errors:
+                # Show warning but continue with successfully read files
+                messagebox.showwarning('Some Files Failed', f'Successfully read {len(files_data)} file(s), but {len(errors)} file(s) had errors:\n' + '\n'.join(errors[:5]))
         
         out = Path(cfg['OUT_DIR'])
         out.mkdir(exist_ok=True)

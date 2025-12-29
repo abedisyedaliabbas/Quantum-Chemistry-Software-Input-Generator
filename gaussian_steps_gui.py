@@ -113,7 +113,16 @@ def natural_key(s: str):
     return tuple(int(p) if p.isdigit() else p for p in parts)
 
 def read_lines(p: Path) -> List[str]:
-    return p.read_text(errors="ignore").splitlines()
+    """Read lines from a file with proper error handling"""
+    try:
+        # Try UTF-8 first
+        return p.read_text(encoding='utf-8', errors='replace').splitlines()
+    except Exception:
+        try:
+            # Fallback to system default encoding
+            return p.read_text(encoding=None, errors='replace').splitlines()
+        except Exception as e:
+            raise IOError(f"Could not read file {p}: {e}")
 
 def write_lines(p: Path, lines: Sequence[str]):
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -144,13 +153,43 @@ def find_geoms(pattern: str, input_type: str = "com") -> List[Path]:
     if input_type == "smiles":
         return []  # SMILES are handled separately
     
+    if not pattern or not pattern.strip():
+        return []
+    
     extension = ".log" if input_type == "log" else ".com"
+    pattern = pattern.strip()
+    
+    # Try as Path first (handles Windows paths better)
     path = Path(pattern)
+    
+    # Normalize path separators for Windows
+    if os.sep == '\\':
+        pattern = pattern.replace('/', '\\')
+    
+    files = []
+    
+    # Check if it's a directory
     if path.exists() and path.is_dir():
         files = sorted(path.glob(f"*{extension}"), key=lambda x: natural_key(x.name))
+    # Check if it's a single file
+    elif path.exists() and path.is_file():
+        if path.suffix.lower() == extension:
+            files = [path]
     else:
-        files = [Path(m) for m in glob.glob(pattern)]
-        files = sorted([p for p in files if p.is_file() and p.suffix.lower() == extension], key=lambda x: natural_key(x.name))
+        # Try as glob pattern
+        # Convert Windows backslashes to forward slashes for glob (glob uses forward slashes internally)
+        glob_pattern = pattern.replace('\\', '/')
+        try:
+            matches = glob.glob(glob_pattern)
+            files = [Path(m) for m in matches]
+            files = [p for p in files if p.is_file() and p.suffix.lower() == extension]
+            files = sorted(files, key=lambda x: natural_key(x.name))
+        except Exception:
+            # If glob fails, try as direct path
+            if path.exists():
+                if path.is_file() and path.suffix.lower() == extension:
+                    files = [path]
+    
     return files
 
 def remove_prefix_suffix(filename: str, prefix: str, suffix: str) -> str:
@@ -221,21 +260,62 @@ def add_redundant_coords(coords: List[str], redundant: str, step: int) -> List[s
     return coords + [""]
 
 def extract_cm_coords(lines: List[str]) -> Tuple[str, List[str]]:
+    """Extract charge/multiplicity and coordinates from Gaussian .com file lines"""
+    if not lines:
+        raise ValueError("File is empty")
+    
+    # Find empty lines (separate route from coordinates)
     empties = [i for i, L in enumerate(lines) if not L.strip()]
-    coords = lines[empties[1]+1:] if len(empties) >= 2 else lines[:]
+    
+    # Coordinates start after the second empty line (route section ends)
+    # If there are fewer than 2 empty lines, coordinates might start from beginning
+    if len(empties) >= 2:
+        coords = lines[empties[1]+1:]
+    elif len(empties) == 1:
+        coords = lines[empties[0]+1:]
+    else:
+        # No empty lines found, try to find coordinates by pattern
+        coords = lines[:]
+    
     atom_pat = re.compile(r"^[A-Za-z]{1,2}\s+[-\d]")
-    cm = "0 1"
+    cm = "0 1"  # Default charge and multiplicity
+    
+    # Look for charge/multiplicity line (format: "0 1" or "-1 2")
     for i, L in enumerate(coords):
         t = L.strip()
-        if not t: continue
-        if not atom_pat.match(t):
-            if re.match(r"^-?\d+\s+-?\d+$", t):
-                cm = t
-                coords = coords[i+1:]
+        if not t: 
+            continue
+        # Check if this is a charge/multiplicity line (two integers)
+        if re.match(r"^-?\d+\s+-?\d+$", t):
+            cm = t
+            coords = coords[i+1:]
             break
-    while coords and not coords[-1].strip():
-        coords.pop()
-    return cm, coords
+        # If we hit a coordinate line, stop looking for cm
+        if atom_pat.match(t):
+            break
+    
+    # Extract coordinate lines
+    coord_lines = []
+    for L in coords:
+        t = L.strip()
+        if not t:
+            continue
+        # Check if it's a coordinate line (element symbol followed by numbers)
+        if atom_pat.match(t):
+            coord_lines.append(t)
+        # Stop if we hit something that's not a coordinate
+        elif coord_lines:
+            # We've already found coordinates, stop here
+            break
+    
+    # Remove trailing empty lines
+    while coord_lines and not coord_lines[-1].strip():
+        coord_lines.pop()
+    
+    if not coord_lines:
+        raise ValueError("No coordinates found in file. Expected format: element symbol followed by X Y Z coordinates.")
+    
+    return cm, coord_lines
 
 def parse_gaussian_log(log_file: Path) -> Tuple[str, List[str], str]:
     """
