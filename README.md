@@ -176,6 +176,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Ollama**: For local AI capabilities
 - **Google Gemini**: For cloud AI capabilities
 
+## 📚 Documentation
+
+For detailed tutorials and comprehensive documentation, see:
+- **[TUTORIAL.md](TUTORIAL.md)**: Complete tutorial covering all features, workflows, examples, and best practices
+- **[CHANGELOG.md](CHANGELOG.md)**: Version history and updates
+- **[SETUP_OLLAMA.md](SETUP_OLLAMA.md)**: Ollama AI setup instructions
+
 ## 📧 Contact
 
 For questions, issues, or contributions, please open an issue on GitHub.
