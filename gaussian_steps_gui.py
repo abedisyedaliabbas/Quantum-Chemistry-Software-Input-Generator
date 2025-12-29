@@ -871,11 +871,36 @@ def route_step7(cfg):
 
 # ---------- generation ----------
 
+def sanitize_filename(name: str) -> str:
+    """
+    Sanitize a string to be safe for use in Windows filenames.
+    Removes or replaces invalid characters: < > : " / \ | ? *
+    """
+    if not name:
+        return ""
+    # Windows invalid characters: < > : " / \ | ? *
+    # Replace with underscore or remove
+    invalid_chars = '<>:"/\\|?*'
+    sanitized = name
+    for char in invalid_chars:
+        sanitized = sanitized.replace(char, '_')
+    # Remove leading/trailing spaces and dots (Windows doesn't allow these)
+    sanitized = sanitized.strip(' .')
+    # Replace multiple consecutive underscores with single underscore
+    while '__' in sanitized:
+        sanitized = sanitized.replace('__', '_')
+    return sanitized
+
 def solv_tag(model: str, name: str) -> str:
     return "vac" if (model or "").lower() in ("none","","vac","vacuum") else (name.lower() if name else "solv")
 
 def jobname(step_num: int, base: str, cfg) -> str:
-    return f"{step_num:02d}{base}_{cfg['FUNCTIONAL']}_{cfg['BASIS']}_{solv_tag(cfg['SOLVENT_MODEL'], cfg['SOLVENT_NAME'])}"
+    """Generate job name with sanitized components"""
+    base_safe = sanitize_filename(base)
+    functional_safe = sanitize_filename(cfg['FUNCTIONAL'])
+    basis_safe = sanitize_filename(cfg['BASIS'])
+    solv_safe = sanitize_filename(solv_tag(cfg['SOLVENT_MODEL'], cfg['SOLVENT_NAME']))
+    return f"{step_num:02d}{base_safe}_{functional_safe}_{basis_safe}_{solv_safe}"
 
 def step_route(step: int, cfg):
     return {1: route_step1, 2: route_step2, 3: route_step3, 4: route_step4, 5: route_step5, 6: route_step6, 7: route_step7}[step](cfg)

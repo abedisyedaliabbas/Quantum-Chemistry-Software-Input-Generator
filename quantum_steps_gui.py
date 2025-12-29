@@ -320,11 +320,36 @@ def orca_step9_custom(cfg, cm, coords):
         lines.append("")
     return lines
 
+def sanitize_filename(name: str) -> str:
+    """
+    Sanitize a string to be safe for use in Windows filenames.
+    Removes or replaces invalid characters: < > : " / \ | ? *
+    """
+    if not name:
+        return ""
+    # Windows invalid characters: < > : " / \ | ? *
+    # Replace with underscore or remove
+    invalid_chars = '<>:"/\\|?*'
+    sanitized = name
+    for char in invalid_chars:
+        sanitized = sanitized.replace(char, '_')
+    # Remove leading/trailing spaces and dots (Windows doesn't allow these)
+    sanitized = sanitized.strip(' .')
+    # Replace multiple consecutive underscores with single underscore
+    while '__' in sanitized:
+        sanitized = sanitized.replace('__', '_')
+    return sanitized
+
 def orca_solv_tag(model: str, name: str) -> str:
     return "vac" if (model or "").lower() in ("none", "", "vac", "vacuum") else (name.lower() if name else "solv")
 
 def orca_jobname(step_num: int, base: str, method: str, basis: str, model: str, name: str) -> str:
-    return f"{step_num:02d}{base}_{method}_{basis}_{orca_solv_tag(model, name)}"
+    """Generate ORCA job name with sanitized components"""
+    base_safe = sanitize_filename(base)
+    method_safe = sanitize_filename(method)
+    basis_safe = sanitize_filename(basis)
+    solv_safe = sanitize_filename(orca_solv_tag(model, name))
+    return f"{step_num:02d}{base_safe}_{method_safe}_{basis_safe}_{solv_safe}"
 
 def orca_pbs_script(job: str, cfg) -> List[str]:
     total_mem_gb = max(1, (cfg['MAXCORE_MB'] * cfg['NPROCS']) // 1024)
