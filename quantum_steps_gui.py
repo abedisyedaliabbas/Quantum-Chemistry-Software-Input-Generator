@@ -2537,6 +2537,14 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
         if input_type == 'smiles' and hasattr(self, 'orca_smiles_text'):
             smiles_input = self.orca_smiles_text.get('1.0', 'end-1c').strip()
         
+        # Get widget values - ensure we get actual values, not empty strings that fall back to defaults
+        method_val = self.cb_method.get().strip() if hasattr(self, 'cb_method') and self.cb_method else ''
+        basis_val = self.cb_basis.get().strip() if hasattr(self, 'cb_basis') and self.cb_basis else ''
+        solvent_model_val = self.cb_smodel.get().strip() if hasattr(self, 'cb_smodel') and self.cb_smodel else ''
+        solvent_name_val = self.cb_sname.get().strip() if hasattr(self, 'cb_sname') and self.cb_sname else ''
+        scheduler_val = self.cb_sched.get().strip() if hasattr(self, 'cb_sched') and self.cb_sched else ''
+        queue_val = self.cb_queue.get().strip() if hasattr(self, 'cb_queue') and self.cb_queue else ''
+        
         return dict(
             MODE=self.vars['MODE'].get(),
             STEP=int(self.vars['STEP'].get()),
@@ -2544,20 +2552,20 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
             INPUTS=self.vars['INPUTS'].get().strip(),
             SMILES_INPUT=smiles_input,
             OUT_DIR=self.vars['OUT_DIR'].get().strip(),
-            METHOD=self.cb_method.get() or ORCA_DEFAULTS['METHOD'],
-            BASIS=self.cb_basis.get() or ORCA_DEFAULTS['BASIS'],
+            METHOD=method_val if method_val else ORCA_DEFAULTS['METHOD'],
+            BASIS=basis_val if basis_val else ORCA_DEFAULTS['BASIS'],
             TD_NROOTS=int(self.vars['TD_NROOTS'].get()),
             TD_IROOT=int(self.vars['TD_IROOT'].get()),
             TD_TDA=bool(self.vars['TD_TDA'].get()),
             FOLLOW_IROOT=bool(self.vars['FOLLOW_IROOT'].get()),
-            SOLVENT_MODEL=self.cb_smodel.get() or ORCA_DEFAULTS['SOLVENT_MODEL'],
-            SOLVENT_NAME=self.cb_sname.get() or ORCA_DEFAULTS['SOLVENT_NAME'],
+            SOLVENT_MODEL=solvent_model_val if solvent_model_val else ORCA_DEFAULTS['SOLVENT_MODEL'],
+            SOLVENT_NAME=solvent_name_val if solvent_name_val else ORCA_DEFAULTS['SOLVENT_NAME'],
             EPSILON=epsilon,
             NPROCS=int(self.vars['NPROCS'].get()),
             MAXCORE_MB=int(self.vars['MAXCORE_MB'].get()),
             ORCA_PATH=self.vars['ORCA_PATH'].get().strip(),
-            SCHEDULER=self.cb_sched.get() or ORCA_DEFAULTS['SCHEDULER'],
-            QUEUE=self.cb_queue.get() or ORCA_DEFAULTS['QUEUE'],
+            SCHEDULER=scheduler_val if scheduler_val else ORCA_DEFAULTS['SCHEDULER'],
+            QUEUE=queue_val if queue_val else ORCA_DEFAULTS['QUEUE'],
             WALLTIME=self.vars['WALLTIME'].get().strip(),
             PROJECT=self.vars.get('PROJECT', tk.StringVar(value='')).get().strip(),
             ACCOUNT=self.vars.get('ACCOUNT', tk.StringVar(value='')).get().strip(),
@@ -2988,11 +2996,17 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
             self._route_update_job = None
         
         def do_update():
+            # Get widget values - ensure we get actual values, not empty strings that fall back to defaults
+            functional_val = self.cb_func.get().strip() if hasattr(self, 'cb_func') and self.cb_func else ''
+            basis_val = self.cb_basis.get().strip() if hasattr(self, 'cb_basis') and self.cb_basis else ''
+            solvent_model_val = self.cb_smodel.get().strip() if hasattr(self, 'cb_smodel') and self.cb_smodel else ''
+            solvent_name_val = self.cb_sname.get().strip() if hasattr(self, 'cb_sname') and self.cb_sname else ''
+            
             cfg_temp = dict(
-                FUNCTIONAL=self.cb_func.get() or GAUSSIAN_DEFAULTS['FUNCTIONAL'],
-                BASIS=self.cb_basis.get() or GAUSSIAN_DEFAULTS['BASIS'],
-                SOLVENT_MODEL=self.cb_smodel.get() or GAUSSIAN_DEFAULTS['SOLVENT_MODEL'],
-                SOLVENT_NAME=self.cb_sname.get() or GAUSSIAN_DEFAULTS['SOLVENT_NAME'],
+                FUNCTIONAL=functional_val if functional_val else GAUSSIAN_DEFAULTS['FUNCTIONAL'],
+                BASIS=basis_val if basis_val else GAUSSIAN_DEFAULTS['BASIS'],
+                SOLVENT_MODEL=solvent_model_val if solvent_model_val else GAUSSIAN_DEFAULTS['SOLVENT_MODEL'],
+                SOLVENT_NAME=solvent_name_val if solvent_name_val else GAUSSIAN_DEFAULTS['SOLVENT_NAME'],
                 TD_NSTATES=int(self.vars['TD_NSTATES'].get()),
                 TD_ROOT=int(self.vars['TD_ROOT'].get()),
                 STATE_TYPE=self.vars['STATE_TYPE'].get() if 'STATE_TYPE' in self.vars else GAUSSIAN_DEFAULTS['STATE_TYPE'],
@@ -3962,6 +3976,15 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
         
         mode = self.vars['MODE'].get()
         
+        # Get widget values - ensure we get actual values, not empty strings that fall back to defaults
+        functional_val = self.cb_func.get().strip() if hasattr(self, 'cb_func') and self.cb_func else ''
+        basis_val = self.cb_basis.get().strip() if hasattr(self, 'cb_basis') and self.cb_basis else ''
+        solvent_model_val = self.cb_smodel.get().strip() if hasattr(self, 'cb_smodel') and self.cb_smodel else ''
+        solvent_name_val = self.cb_sname.get().strip() if hasattr(self, 'cb_sname') and self.cb_sname else ''
+        scheduler_val = self.cb_sched.get().strip() if hasattr(self, 'cb_sched') and self.cb_sched else ''
+        queue_val = self.cb_queue.get().strip() if hasattr(self, 'cb_queue') and self.cb_queue else ''
+        
+        # Only use defaults if widget doesn't exist or value is truly empty
         cfg = dict(
             MODE=mode,
             STEP=int(self.vars['STEP'].get()),
@@ -3969,10 +3992,10 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
             INPUTS=self.vars['INPUTS'].get().strip(),
             SMILES_INPUT=self.gaussian_smiles_text.get('1.0', 'end-1c').strip() if hasattr(self, 'gaussian_smiles_text') else '',
             OUT_DIR=self.vars['OUT_DIR'].get().strip(),
-            FUNCTIONAL=self.cb_func.get() or GAUSSIAN_DEFAULTS['FUNCTIONAL'],
-            BASIS=self.cb_basis.get() or GAUSSIAN_DEFAULTS['BASIS'],
-            SOLVENT_MODEL=self.cb_smodel.get() or GAUSSIAN_DEFAULTS['SOLVENT_MODEL'],
-            SOLVENT_NAME=self.cb_sname.get() or GAUSSIAN_DEFAULTS['SOLVENT_NAME'],
+            FUNCTIONAL=functional_val if functional_val else GAUSSIAN_DEFAULTS['FUNCTIONAL'],
+            BASIS=basis_val if basis_val else GAUSSIAN_DEFAULTS['BASIS'],
+            SOLVENT_MODEL=solvent_model_val if solvent_model_val else GAUSSIAN_DEFAULTS['SOLVENT_MODEL'],
+            SOLVENT_NAME=solvent_name_val if solvent_name_val else GAUSSIAN_DEFAULTS['SOLVENT_NAME'],
             TD_NSTATES=int(self.vars['TD_NSTATES'].get()),
             TD_ROOT=int(self.vars['TD_ROOT'].get()),
             STATE_TYPE=self.vars['STATE_TYPE'].get() if 'STATE_TYPE' in self.vars else GAUSSIAN_DEFAULTS['STATE_TYPE'],
@@ -3980,8 +4003,8 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
             DISPERSION=bool(self.vars['DISPERSION'].get()),
             NPROC=int(self.vars['NPROC'].get()),
             MEM=self.vars['MEM'].get().strip(),
-            SCHEDULER=self.cb_sched.get() or GAUSSIAN_DEFAULTS['SCHEDULER'],
-            QUEUE=self.cb_queue.get() or GAUSSIAN_DEFAULTS['QUEUE'],
+            SCHEDULER=scheduler_val if scheduler_val else GAUSSIAN_DEFAULTS['SCHEDULER'],
+            QUEUE=queue_val if queue_val else GAUSSIAN_DEFAULTS['QUEUE'],
             WALLTIME=self.vars['WALLTIME'].get().strip(),
             PROJECT=self.vars['PROJECT'].get().strip(),
             ACCOUNT=self.vars['ACCOUNT'].get().strip(),
@@ -4499,14 +4522,15 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
     
     def _gaussian_save_prefs(self):
         """Save Gaussian preferences"""
+        # IMPORTANT: Collect config fresh to ensure we save current widget values
         cfg = self._gaussian_collect()
         cfg['lists'] = dict(
-            func=self.cb_func.values if hasattr(self.cb_func, 'values') else [],
-            basis=self.cb_basis.values if hasattr(self.cb_basis, 'values') else [],
-            smodel=self.cb_smodel.values if hasattr(self.cb_smodel, 'values') else [],
-            sname=self.cb_sname.values if hasattr(self.cb_sname, 'values') else [],
-            sched=self.cb_sched.values if hasattr(self.cb_sched, 'values') else [],
-            queue=self.cb_queue.values if hasattr(self.cb_queue, 'values') else []
+            func=self.cb_func.values if hasattr(self, 'cb_func') and self.cb_func and hasattr(self.cb_func, 'values') else [],
+            basis=self.cb_basis.values if hasattr(self, 'cb_basis') and self.cb_basis and hasattr(self.cb_basis, 'values') else [],
+            smodel=self.cb_smodel.values if hasattr(self, 'cb_smodel') and self.cb_smodel and hasattr(self.cb_smodel, 'values') else [],
+            sname=self.cb_sname.values if hasattr(self, 'cb_sname') and self.cb_sname and hasattr(self.cb_sname, 'values') else [],
+            sched=self.cb_sched.values if hasattr(self, 'cb_sched') and self.cb_sched and hasattr(self.cb_sched, 'values') else [],
+            queue=self.cb_queue.values if hasattr(self, 'cb_queue') and self.cb_queue and hasattr(self.cb_queue, 'values') else []
         )
         try:
             with open(PREFS_FILE, 'w', encoding='utf-8') as f:
@@ -4579,6 +4603,20 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
                 for step, var in self.step_geom_source_vars.items():
                     if step in geom_sources:
                         var.set(geom_sources[step])
+            
+            # Restore combo box values (CRITICAL - must restore before using)
+            if 'FUNCTIONAL' in cfg and hasattr(self, 'cb_func') and self.cb_func:
+                self.cb_func.set(cfg['FUNCTIONAL'])
+            if 'BASIS' in cfg and hasattr(self, 'cb_basis') and self.cb_basis:
+                self.cb_basis.set(cfg['BASIS'])
+            if 'SOLVENT_MODEL' in cfg and hasattr(self, 'cb_smodel') and self.cb_smodel:
+                self.cb_smodel.set(cfg['SOLVENT_MODEL'])
+            if 'SOLVENT_NAME' in cfg and hasattr(self, 'cb_sname') and self.cb_sname:
+                self.cb_sname.set(cfg['SOLVENT_NAME'])
+            if 'SCHEDULER' in cfg and hasattr(self, 'cb_sched') and self.cb_sched:
+                self.cb_sched.set(cfg['SCHEDULER'])
+            if 'QUEUE' in cfg and hasattr(self, 'cb_queue') and self.cb_queue:
+                self.cb_queue.set(cfg['QUEUE'])
             
             if hasattr(self, 'redundant_text'):
                 redundant = cfg.get('REDUNDANT_COORDS', '')

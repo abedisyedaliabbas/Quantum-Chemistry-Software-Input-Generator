@@ -111,3 +111,4 @@ To find your computer's IP address:
 - Make sure `gaussian_steps_gui.py` and `quantum_steps_gui.py` are in the same directory
 - Check that all required Python packages are installed
 
+
