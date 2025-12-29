@@ -419,8 +419,25 @@ class EditableCombo(ttk.Frame):
             self.values.append(txt)
             self.combo['values'] = self.values
 
-    def get(self) -> str: return self.var.get().strip()
-    def set(self, v: str): self.var.set(v)
+    def get(self) -> str: 
+        # Read directly from combo box widget (most reliable)
+        try:
+            val = self.combo.get().strip()
+            if val:
+                # Sync with internal var
+                self.var.set(val)
+                return val
+        except:
+            pass
+        # Fallback to internal var
+        return self.var.get().strip()
+    def set(self, v: str): 
+        self.var.set(v)
+        # Also update combo box widget
+        try:
+            self.combo.set(v)
+        except:
+            pass
 
 # ===================== Main Application =====================
 class QuantumStepsApp:
@@ -4067,12 +4084,61 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
         mode = self.vars['MODE'].get()
         
         # Get widget values - ensure we get actual values, not empty strings that fall back to defaults
-        functional_val = self.cb_func.get().strip() if hasattr(self, 'cb_func') and self.cb_func else ''
-        basis_val = self.cb_basis.get().strip() if hasattr(self, 'cb_basis') and self.cb_basis else ''
-        solvent_model_val = self.cb_smodel.get().strip() if hasattr(self, 'cb_smodel') and self.cb_smodel else ''
-        solvent_name_val = self.cb_sname.get().strip() if hasattr(self, 'cb_sname') and self.cb_sname else ''
-        scheduler_val = self.cb_sched.get().strip() if hasattr(self, 'cb_sched') and self.cb_sched else ''
-        queue_val = self.cb_queue.get().strip() if hasattr(self, 'cb_queue') and self.cb_queue else ''
+        # Force update of widget values by accessing them directly
+        functional_val = ''
+        if hasattr(self, 'cb_func') and self.cb_func:
+            try:
+                functional_val = self.cb_func.get().strip()
+                # Also try to get from the combo box directly if available
+                if not functional_val and hasattr(self.cb_func, 'combo'):
+                    functional_val = self.cb_func.combo.get().strip()
+            except Exception:
+                functional_val = ''
+        
+        basis_val = ''
+        if hasattr(self, 'cb_basis') and self.cb_basis:
+            try:
+                basis_val = self.cb_basis.get().strip()
+                if not basis_val and hasattr(self.cb_basis, 'combo'):
+                    basis_val = self.cb_basis.combo.get().strip()
+            except Exception:
+                basis_val = ''
+        
+        solvent_model_val = ''
+        if hasattr(self, 'cb_smodel') and self.cb_smodel:
+            try:
+                solvent_model_val = self.cb_smodel.get().strip()
+                if not solvent_model_val and hasattr(self.cb_smodel, 'combo'):
+                    solvent_model_val = self.cb_smodel.combo.get().strip()
+            except Exception:
+                solvent_model_val = ''
+        
+        solvent_name_val = ''
+        if hasattr(self, 'cb_sname') and self.cb_sname:
+            try:
+                solvent_name_val = self.cb_sname.get().strip()
+                if not solvent_name_val and hasattr(self.cb_sname, 'combo'):
+                    solvent_name_val = self.cb_sname.combo.get().strip()
+            except Exception:
+                solvent_name_val = ''
+        
+        scheduler_val = ''
+        if hasattr(self, 'cb_sched') and self.cb_sched:
+            try:
+                scheduler_val = self.cb_sched.get().strip()
+                if not scheduler_val and hasattr(self.cb_sched, 'combo'):
+                    scheduler_val = self.cb_sched.combo.get().strip()
+            except Exception:
+                scheduler_val = ''
+        
+        queue_val = ''
+        if hasattr(self, 'cb_queue') and self.cb_queue:
+            try:
+                queue_val = self.cb_queue.get().strip()
+                if not queue_val and hasattr(self.cb_queue, 'combo'):
+                    queue_val = self.cb_queue.combo.get().strip()
+            except Exception:
+                queue_val = ''
         
         # Only use defaults if widget doesn't exist or value is truly empty
         cfg = dict(
@@ -4297,7 +4363,25 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
     
     def _gaussian_generate(self):
         """Generate Gaussian input files"""
+        # Force update of widget values before collection
+        if hasattr(self, 'cb_func') and self.cb_func:
+            try:
+                # Force the combo box to update its value
+                self.cb_func.combo.update_idletasks()
+            except:
+                pass
+        if hasattr(self, 'cb_basis') and self.cb_basis:
+            try:
+                self.cb_basis.combo.update_idletasks()
+            except:
+                pass
+        
         cfg = self._gaussian_collect()
+        
+        # Debug: Update status to show what values are being used
+        status_msg = f"Generating with: {cfg['FUNCTIONAL']}/{cfg['BASIS']}"
+        if hasattr(self, 'gaussian_status'):
+            self.gaussian_status.config(text=status_msg)
         
         if cfg['INPUT_TYPE'] == 'smiles':
             smiles_text = cfg['SMILES_INPUT'].strip()
