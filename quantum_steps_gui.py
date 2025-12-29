@@ -4245,7 +4245,7 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
             chunks = []
             for base, cm, coords in files_data:
                 solv_tag_val = solv_tag(cfg['SOLVENT_MODEL'], cfg['SOLVENT_NAME'])
-                job = f"{base}_{cfg['FUNCTIONAL']}_{cfg['BASIS']}_{solv_tag_val}_SOC"
+                job = f"{sanitize_filename(base)}_{sanitize_filename(cfg['FUNCTIONAL'])}_{sanitize_filename(cfg['BASIS'])}_{sanitize_filename(solv_tag_val)}_SOC"
                 title = f"PySOC {cfg['FUNCTIONAL']}/{cfg['BASIS']}"
                 route = route_step2(cfg)
                 save_rwf = True
@@ -4419,7 +4419,7 @@ Example: "12-13,19-21,23-26" means atoms 12,13,19,20,21,23,24,25,26."""
         if cfg.get('SOC_ENABLE', False):
             for base, cm, coords in files_data:
                 solv_tag_val = solv_tag(cfg['SOLVENT_MODEL'], cfg['SOLVENT_NAME'])
-                job = f"{base}_{cfg['FUNCTIONAL']}_{cfg['BASIS']}_{solv_tag_val}_SOC"
+                job = f"{sanitize_filename(base)}_{sanitize_filename(cfg['FUNCTIONAL'])}_{sanitize_filename(cfg['BASIS'])}_{sanitize_filename(solv_tag_val)}_SOC"
                 title = f"PySOC {cfg['FUNCTIONAL']}/{cfg['BASIS']}"
                 route = route_step2(cfg)
                 save_rwf = True
