@@ -8,22 +8,25 @@ A comprehensive Python application for automatically generating input files for 
 ## ✨ Features
 
 ### 🖥️ Desktop GUI Version
-- **Beautiful modern interface** with tabbed navigation
-- **Dual software support**: Gaussian (G16/G09) and ORCA
+- **Beautiful modern interface** with tabbed navigation and scrollable frames
+- **Dual software support**: Gaussian (G16/G09) and ORCA with unified interface
 - **Multiple input types**: 
   - `.com` files (Gaussian input format)
   - `.log` files (extract geometry from completed calculations)
   - `.xyz` files (XYZ coordinate format)
   - **SMILES strings** with ChemDraw SVG name extraction
 - **Full workflow generation** (steps 1-7 for Gaussian, steps 1,2,4,7,9 for ORCA)
+- **TICT Rotation**: Advanced torsional/dihedral scan generation
+- **AI Assistant**: Conversational AI for generating input files (Ollama & Gemini support)
 - **PySOC integration** for Spin-Orbit Coupling calculations
-- **Scheduler support**: PBS, SLURM, and Local
+- **Scheduler support**: PBS, SLURM, and Local with customizable resources
 - **Advanced features**: 
   - TD-DFT with Singlet/Triplet/Mixed states
-  - Solvent models (PCM, SMD)
-  - Custom routes and keywords
+  - Solvent models (PCM, SMD, IEFPCM, CPCM)
+  - Custom routes and keywords per step
   - Redundant coordinates
   - Geometry chaining
+  - Bulk file processing (folders and glob patterns)
 
 ### 🌐 Web Version
 - **Cross-platform**: Works on iOS Safari, Android Chrome, and desktop browsers
@@ -32,30 +35,7 @@ A comprehensive Python application for automatically generating input files for 
 - **Same powerful features** as desktop version
 - **Responsive design**: Optimized for mobile and desktop
 
-## 📋 Table of Contents
-
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
-- [Features in Detail](#features-in-detail)
-- [Web Version](#web-version)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
-
-## 🚀 Installation
-
-### Prerequisites
-
-- Python 3.8 or higher
-- RDKit (for SMILES processing) - optional but recommended
-  ```bash
-  # Using conda (recommended)
-  conda install -c conda-forge rdkit
-  
-  # Or using pip (may have limitations)
-  pip install rdkit-pypi
-  ```
+## 🚀 Quick Start
 
 ### Desktop GUI Version
 
@@ -91,167 +71,85 @@ A comprehensive Python application for automatically generating input files for 
    - Local: `http://localhost:5000`
    - Network: `http://YOUR_IP:5000` (for sharing with friends on same WiFi)
 
-See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed deployment instructions.
-
-## 🎯 Quick Start
-
-### Desktop GUI
-
-1. Launch `quantum_steps_gui.py`
-2. Select software (Gaussian or ORCA)
-3. Choose input type (`.com`, `.log`, `.xyz`, or SMILES)
-4. Configure settings in tabs:
-   - **Mode & IO**: Select mode (Full/Single/Multiple) and input files
-   - **Method**: Choose functional and basis set
-   - **Solvent**: Configure solvent model
-   - **TD-DFT**: Set excited state parameters
-   - **Resources**: Set computational resources
-   - **Scheduler**: Configure job submission
-   - **Advanced**: Additional options
-5. Click **Generate** to create all input files
-
-### Web Version
-
-1. Start the server: `python quantum_steps_web.py`
-2. Open `http://localhost:5000` in your browser
-3. Follow the same workflow as desktop version
-4. Download generated files as ZIP archive
-
 ## 📖 Usage
 
-### Gaussian Workflow Steps
+### Workflow Steps
 
-1. **Step 1**: Ground state geometry optimization
-2. **Step 2**: Vertical excitation (Franck-Condon state)
-3. **Step 3**: cLR correction of vertical excitation energy
-4. **Step 4**: Excited state geometry optimization
-5. **Step 5**: Density calculation at optimized excited state geometry
-6. **Step 6**: cLR correction of excited state energy
-7. **Step 7**: Ground state energy at excited state geometry
+**Gaussian:**
+1. Ground state geometry optimization
+2. Vertical excitation (Franck-Condon state)
+3. cLR correction of vertical excitation energy
+4. Excited state geometry optimization
+5. Density calculation at optimized excited state geometry
+6. cLR correction of excited state energy
+7. Ground state energy at excited state geometry
 
-### ORCA Workflow Steps
-
-1. **Step 1**: Ground state optimization
-2. **Step 2**: Vertical excitation (Franck-Condon state)
-3. **Step 4**: Excited state optimization
-4. **Step 7**: Ground state at excited state geometry
-5. **Step 9**: Custom step (user-defined)
+**ORCA:**
+1. Ground state optimization
+2. Vertical excitation (Franck-Condon state)
+4. Excited state optimization
+7. Ground state at excited state geometry
+9. Custom step (user-defined)
 
 ### Input Types
 
-#### `.com` Files
-- Standard Gaussian input files
-- Automatically extracts geometry, charge, and multiplicity
+- **`.com` files**: Standard Gaussian input files - automatically extracts geometry, charge, and multiplicity
+- **`.log` files**: Completed Gaussian calculations - extracts final optimized geometry
+- **`.xyz` files**: Standard XYZ coordinate format
+- **SMILES strings**: Chemical structure input with automatic 3D coordinate generation using RDKit
+  - Format: `name:SMILES` or just `SMILES`
+  - Supports ChemDraw SVG name extraction
 
-#### `.log` Files
-- Completed Gaussian calculations
-- Extracts final optimized geometry
-- Useful for continuing calculations
+### Key Features
 
-#### `.xyz` Files
-- Standard XYZ coordinate format
-- Simple coordinate input
+- **Modes**: Full (all steps), Single (one step), Multiple (selected steps)
+- **TD-DFT Options**: Singlet, Triplet, Mixed (50-50) states
+- **Solvent Models**: PCM, SMD, IEFPCM, CPCM, or gas phase
+- **TICT Rotation**: Generate torsional/dihedral scans with automatic branch detection
+- **AI Assistant**: Natural language interface for generating input files
+- **PySOC Integration**: Automatic preparation for Spin-Orbit Coupling calculations
+- **Schedulers**: PBS, SLURM, and Local execution scripts
 
-#### SMILES Strings
-- Chemical structure input using SMILES notation
-- Supports ChemDraw SVG name extraction
-- Automatic 3D coordinate generation using RDKit
-- Format: `name:SMILES` or just `SMILES`
+## 🔧 Advanced Features
 
-Example:
-```
-formaldehyde:CO
-benzene:c1ccccc1
-water:O
-```
+### TICT Rotation
+Generate rotated geometries for torsional/dihedral scans. Supports:
+- Automatic branch detection
+- Multiple rotation axes
+- Custom step sizes
+- Bulk file processing
 
-### SMILES with ChemDraw Names
-
-1. Copy SMILES from ChemDraw: `Edit → Copy As → SMILES`
-2. Export structure names: `File → Save As → SVG`
-3. Click "Load Names from SVG" in the GUI
-4. Names are automatically matched with SMILES!
-
-## 🔧 Features in Detail
-
-### Software Selection
-- **Gaussian**: Full support for G16/G09 workflows
-- **ORCA**: Complete ORCA input file generation
-
-### Modes
-- **Full Mode**: Generate all steps (1-7 for Gaussian, 1,2,4,7,9 for ORCA)
-- **Single Mode**: Generate one selected step
-- **Multiple Mode**: Select specific steps to generate
-
-### TD-DFT Options
-- **Singlet**: Standard closed-shell singlet states
-- **Triplet**: Explicit triplet states (`TD(Triplets, NStates=n)`)
-- **Mixed (50-50)**: Mixed singlet-triplet states for SOC calculations
-
-### Solvent Models
-- **PCM**: Polarizable Continuum Model
-- **SMD**: Solvation Model based on Density
-- **None**: Gas phase calculations
+### AI Assistant
+Conversational interface powered by Ollama (local, free) or Google Gemini:
+- Natural language input file generation
+- Automatic parameter detection
+- Bulk file processing support
+- TICT scan generation from descriptions
 
 ### PySOC Integration
-- Automatic preparation for Spin-Orbit Coupling calculations
-- Generates bash scripts for running PySOC
+Automatic preparation for Spin-Orbit Coupling calculations:
+- Generates `.com` files with `%rwf` and `6D 10F GFInput`
+- Creates bash scripts for running PySOC
 - Combines results into Excel files
-- Requires: `TD(50-50)`, `%rwf`, `6D 10F GFInput`
-
-### Schedulers
-- **PBS**: Portable Batch System
-- **SLURM**: Simple Linux Utility for Resource Management
-- **Local**: Local execution scripts
-
-## 🌐 Web Version
-
-The web version provides the same functionality as the desktop GUI but accessible through any web browser.
-
-### Sharing with Friends
-
-**Local Network (Same WiFi):**
-1. Start server: `python quantum_steps_web.py`
-2. Share the URL shown (e.g., `http://192.168.1.100:5000`)
-3. Friends can access from their devices
-
-**Cloud Deployment:**
-- Deploy to Railway, Render, or PythonAnywhere for public access
-- See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for details
-
-### Web API Endpoints
-
-- `GET /` - Main web interface
-- `GET /api/defaults/<software>` - Get default settings
-- `POST /api/route-preview` - Preview route for a step
-- `POST /api/smiles-to-coords` - Convert SMILES to coordinates
-- `POST /api/extract-names-from-svg` - Extract names from SVG
-- `POST /api/parse-log` - Parse Gaussian log file
-- `POST /api/preview` - Preview generated files
-- `POST /api/generate` - Generate and download files
-- `GET /health` - Health check
 
 ## 📁 Project Structure
 
 ```
 Quantum-Chemistry-Software-Input-Generator/
 ├── quantum_steps_gui.py          # Main desktop GUI application
-├── quantum_steps_web.py         # Flask web server
-├── gaussian_steps_gui.py        # Gaussian backend logic
-├── ORCA_Step_Maker.py           # ORCA backend logic (if separate)
+├── quantum_steps_web.py          # Flask web server
+├── gaussian_steps_gui.py         # Gaussian backend logic
+├── ai_assistant.py               # AI assistant integration
+├── ai_file_generator.py          # AI-driven file generation
+├── tict_rotation.py              # TICT rotation module
 ├── templates/                    # Web UI templates
 │   └── index.html
 ├── static/                       # Web static files
-│   ├── css/
-│   │   └── style.css
-│   └── js/
-│       └── app.js
-├── requirements.txt             # Desktop dependencies
-├── requirements_web.txt         # Web dependencies
-├── README.md                     # This file
-├── DEPLOYMENT_GUIDE.md          # Web deployment guide
-├── LICENSE                       # MIT License
-└── .gitignore                   # Git ignore rules
+│   ├── css/style.css
+│   └── js/app.js
+├── requirements.txt              # Desktop dependencies
+├── requirements_web.txt          # Web dependencies
+└── README.md                     # This file
 ```
 
 ## 🤝 Contributing
@@ -275,6 +173,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **RDKit**: For SMILES processing and 3D coordinate generation
 - **PySOC**: For Spin-Orbit Coupling calculations
 - **ChemDraw**: For structure drawing and SMILES export
+- **Ollama**: For local AI capabilities
+- **Google Gemini**: For cloud AI capabilities
 
 ## 📧 Contact
 
@@ -283,5 +183,3 @@ For questions, issues, or contributions, please open an issue on GitHub.
 ---
 
 **Made with ❤️ for the quantum chemistry community**
-
-
