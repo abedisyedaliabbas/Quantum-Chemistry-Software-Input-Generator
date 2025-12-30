@@ -82,3 +82,4 @@ Once Ollama is installed and a model is downloaded:
 - Try restarting the application
 - Check firewall settings if issues persist
 
+

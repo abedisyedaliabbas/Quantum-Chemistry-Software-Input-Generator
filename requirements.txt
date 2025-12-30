@@ -18,3 +18,4 @@ pathlib  # Part of Python 3.4+
 # The application uses only Python standard library + tkinter
 
 
+
