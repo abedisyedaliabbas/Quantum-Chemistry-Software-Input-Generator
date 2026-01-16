@@ -126,6 +126,10 @@ Conversational interface powered by Ollama (local, free) or Google Gemini:
 - Bulk file processing support
 - TICT scan generation from descriptions
 
+**Setup AI Assistant:**
+- **Ollama** (Recommended): Install from [ollama.com](https://ollama.com), then run `ollama pull llama3.1:8b`
+- **Google Gemini**: Get API key from [makersuite.google.com](https://makersuite.google.com/app/apikey) and enter in AI Assistant tab
+
 ### PySOC Integration
 Automatic preparation for Spin-Orbit Coupling calculations:
 - Generates `.com` files with `%rwf` and `6D 10F GFInput`
@@ -175,13 +179,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **ChemDraw**: For structure drawing and SMILES export
 - **Ollama**: For local AI capabilities
 - **Google Gemini**: For cloud AI capabilities
-
-## 📚 Documentation
-
-For detailed tutorials and comprehensive documentation, see:
-- **[TUTORIAL.md](TUTORIAL.md)**: Complete tutorial covering all features, workflows, examples, and best practices
-- **[CHANGELOG.md](CHANGELOG.md)**: Version history and updates
-- **[SETUP_OLLAMA.md](SETUP_OLLAMA.md)**: Ollama AI setup instructions
 
 ## 📧 Contact
 
