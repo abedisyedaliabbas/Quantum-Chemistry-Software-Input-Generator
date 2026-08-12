@@ -822,6 +822,14 @@ def scrf(cfg):
 def scrf_clr(cfg):
     return build_scrf(cfg['SOLVENT_MODEL'], cfg['SOLVENT_NAME'], "CorrectedLR")
 
+def scrf_clr_save(cfg):
+    """Step 6: CorrectedLR with NonEq=Save — saves PCM data for Step 7."""
+    return build_scrf(cfg['SOLVENT_MODEL'], cfg['SOLVENT_NAME'], "CorrectedLR, NonEq=Save")
+
+def scrf_noneq_read(cfg):
+    """Step 7: NonEq=Read — reads PCM data saved by Step 6."""
+    return build_scrf(cfg['SOLVENT_MODEL'], cfg['SOLVENT_NAME'], "NonEq=Read")
+
 def route_step1(cfg): 
     manual = cfg.get('MANUAL_ROUTES', {}).get(1, "").strip()
     if manual: return manual
@@ -861,13 +869,15 @@ def route_step6(cfg):
     manual = cfg.get('MANUAL_ROUTES', {}).get(6, "").strip()
     if manual: return manual
     soc_enable = cfg.get('SOC_ENABLE', False)
-    return route_line(cfg['FUNCTIONAL'], cfg['BASIS'], td=td_block(cfg), scrf=scrf_clr(cfg), extras=f"{disp_kw(cfg)}", soc_enable=soc_enable)
+    return route_line(cfg['FUNCTIONAL'], cfg['BASIS'], td=td_block(cfg), scrf=scrf_clr_save(cfg), extras=f"{disp_kw(cfg)}", soc_enable=soc_enable)
 
 def route_step7(cfg): 
     manual = cfg.get('MANUAL_ROUTES', {}).get(7, "").strip()
     if manual: return manual
     soc_enable = cfg.get('SOC_ENABLE', False)
-    return route_line(cfg['FUNCTIONAL'], cfg['BASIS'], td=td_block(cfg), scrf=scrf(cfg), extras=f"{pop_kw(cfg)}{disp_kw(cfg)}", soc_enable=soc_enable)
+    # Step 7 is ground-state de-excitation: NO TD keywords.
+    # Uses NonEq=Read to read PCM data saved by Step 6's NonEq=Save.
+    return route_line(cfg['FUNCTIONAL'], cfg['BASIS'], scrf=scrf_noneq_read(cfg), extras=f"{pop_kw(cfg)}{disp_kw(cfg)}", soc_enable=soc_enable)
 
 # ---------- generation ----------
 

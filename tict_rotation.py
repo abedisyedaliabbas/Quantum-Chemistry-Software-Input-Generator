@@ -268,6 +268,70 @@ def get_coordinates_as_xyz_lines(symbols: List[str], coords: np.ndarray) -> List
     return [f"  {s:<2}   {c[0]: 15.10f}   {c[1]: 15.10f}   {c[2]: 15.10f}" for s, c in zip(symbols, coords)]
 
 
+def calculate_dihedral(coords: np.ndarray, a: int, b: int, c: int, d: int) -> float:
+    """
+    Calculate dihedral angle in degrees between atoms a-b-c-d (0-based indices).
+    
+    Args:
+        coords: Nx3 array of coordinates
+        a, b, c, d: 0-based atom indices
+        
+    Returns:
+        Dihedral angle in degrees (-180 to 180)
+    """
+    p0, p1, p2, p3 = coords[a], coords[b], coords[c], coords[d]
+    b1 = p1 - p0
+    b2 = p2 - p1
+    b3 = p3 - p2
+    n1 = np.cross(b1, b2)
+    n2 = np.cross(b2, b3)
+    b2_norm = b2 / np.linalg.norm(b2)
+    m1 = np.cross(n1, b2_norm)
+    x = np.dot(n1, n2)
+    y = np.dot(m1, n2)
+    return float(np.degrees(np.arctan2(y, x)))
+
+
+def compute_tict_step_sizes(
+    coords: np.ndarray,
+    dihedral_a: Tuple[int, int, int, int],
+    dihedral_b: Tuple[int, int, int, int],
+    target_angle: float,
+    num_steps: int
+) -> Tuple[float, float, float, float]:
+    """
+    Compute the rotation step sizes needed for both arms to reach
+    the target dihedral angle simultaneously.
+    
+    Args:
+        coords: Nx3 array of coordinates
+        dihedral_a: (a, b, c, d) 0-based atom indices for dihedral A
+        dihedral_b: (a, b, c, d) 0-based atom indices for dihedral B
+        target_angle: Target angle in degrees (typically 90 or -90)
+        num_steps: Number of rotation steps
+        
+    Returns:
+        (step_a, step_b, current_a, current_b) in degrees
+    """
+    current_a = calculate_dihedral(coords, *dihedral_a)
+    current_b = calculate_dihedral(coords, *dihedral_b)
+    
+    # Determine which direction to rotate (shortest path to target)
+    delta_a = target_angle - current_a
+    delta_b = target_angle - current_b
+    
+    # Normalize to -180..180
+    while delta_a > 180: delta_a -= 360
+    while delta_a < -180: delta_a += 360
+    while delta_b > 180: delta_b -= 360
+    while delta_b < -180: delta_b += 360
+    
+    step_a = delta_a / num_steps
+    step_b = delta_b / num_steps
+    
+    return step_a, step_b, current_a, current_b
+
+
 def generate_tict_rotations(
     input_file: str,
     output_dir: str,
@@ -386,3 +450,144 @@ def generate_tict_rotations(
     except Exception as e:
         return False, f"Error: {str(e)}", []
 
+
+
+def generate_tict_to_target(
+    input_file: str,
+    output_dir: str,
+    axis_str: str,
+    branch_a_str: str,
+    branch_b_str: str,
+    dihedral_a: Tuple[int, int, int, int],
+    dihedral_b: Tuple[int, int, int, int],
+    target_angle: float = -90.0,
+    num_steps: int = 10,
+    constraints: Optional[List[str]] = None,
+    file_format: str = "gaussian"
+) -> Tuple[bool, str, List[str]]:
+    """
+    Generate TICT rotated geometries with automatic step size calculation
+    so BOTH arms reach the target dihedral angle simultaneously.
+    
+    Args:
+        input_file: Path to input geometry file
+        output_dir: Directory to save rotated geometries
+        axis_str: Rotation axis atoms (e.g., "3,10")
+        branch_a_str: Branch A atom indices (1-based)
+        branch_b_str: Branch B atom indices (1-based)
+        dihedral_a: (a, b, c, d) 1-based atom indices for dihedral A
+        dihedral_b: (a, b, c, d) 1-based atom indices for dihedral B
+        target_angle: Target dihedral angle in degrees (default -90)
+        num_steps: Number of rotation steps
+        constraints: Optional list of ModRedundant constraint lines
+                     (e.g., ["D 4 3 10 11 F", "D 2 3 10 13 F"])
+        file_format: "gaussian" or "orca"
+        
+    Returns:
+        Tuple of (success, message, files_created)
+    """
+    try:
+        # Load geometry
+        if file_format.lower() == "orca":
+            cm_line, symbols, original_coords = load_orca_geometry(input_file)
+            if symbols is None:
+                return False, f"Error loading ORCA file: {cm_line}", []
+            header_lines = []
+            title_line = ""
+        else:
+            header_lines, title_line, cm_line, symbols, original_coords = load_gaussian_geometry(input_file)
+            if symbols is None:
+                return False, f"Error loading Gaussian file: {title_line}", []
+        
+        # Convert dihedrals to 0-based
+        d_a_0 = tuple(i - 1 for i in dihedral_a)
+        d_b_0 = tuple(i - 1 for i in dihedral_b)
+        
+        # Compute step sizes
+        step_a, step_b, cur_a, cur_b = compute_tict_step_sizes(
+            original_coords, d_a_0, d_b_0, target_angle, num_steps)
+        
+        # Parse atom strings
+        axis_indices = parse_atom_string(axis_str)
+        branch_a_indices = parse_atom_string(branch_a_str)
+        branch_b_indices = parse_atom_string(branch_b_str)
+        
+        if len(axis_indices) != 2:
+            return False, f"Rotation axis must have exactly 2 atoms.", []
+        
+        atom_b, atom_c = axis_indices[0], axis_indices[1]
+        rotation_center = original_coords[atom_b].copy()
+        rotation_axis_vector = original_coords[atom_c] - original_coords[atom_b]
+        
+        if np.linalg.norm(rotation_axis_vector) == 0:
+            return False, "Axis atoms are at the same position.", []
+        
+        os.makedirs(output_dir, exist_ok=True)
+        base_name = Path(input_file).stem
+        files_created = []
+        
+        info_lines = [
+            f"TICT Target Rotation",
+            f"  Axis: atoms {axis_str}",
+            f"  Dihedral A ({dihedral_a}): {cur_a:.1f}° → {target_angle:.1f}° (step {step_a:.2f}°)",
+            f"  Dihedral B ({dihedral_b}): {cur_b:.1f}° → {target_angle:.1f}° (step {step_b:.2f}°)",
+        ]
+        
+        for i in range(num_steps + 1):
+            current_coords = original_coords.copy()
+            
+            # Rotate Branch A
+            angle_a_rad = np.radians(i * step_a)
+            if abs(angle_a_rad) > 1e-8:
+                matrix_a, err = get_rotation_matrix(rotation_axis_vector, angle_a_rad)
+                if err:
+                    return False, err, []
+                current_coords = apply_rotation(current_coords, branch_a_indices, matrix_a, rotation_center)
+            
+            # Rotate Branch B
+            angle_b_rad = np.radians(i * step_b)
+            if abs(angle_b_rad) > 1e-8:
+                matrix_b, err = get_rotation_matrix(rotation_axis_vector, angle_b_rad)
+                if err:
+                    return False, err, []
+                current_coords = apply_rotation(current_coords, branch_b_indices, matrix_b, rotation_center)
+            
+            # Verify dihedrals
+            actual_a = calculate_dihedral(current_coords, *d_a_0)
+            actual_b = calculate_dihedral(current_coords, *d_b_0)
+            info_lines.append(f"  Step {i:03d}: D_A={actual_a:.1f}° D_B={actual_b:.1f}°")
+            
+            # Write output
+            if file_format.lower() == "orca":
+                output_filename = f"{base_name}_{i:03d}.xyz"
+                output_filepath = os.path.join(output_dir, output_filename)
+                coord_lines = get_coordinates_as_xyz_lines(symbols, current_coords)
+                with open(output_filepath, 'w') as f:
+                    f.write(f"{len(symbols)}\n")
+                    f.write(f"TICT Step {i} D_A={actual_a:.1f} D_B={actual_b:.1f}\n")
+                    f.write("\n".join(coord_lines) + "\n")
+            else:
+                output_filename = f"{base_name}_{i:03d}.com"
+                output_filepath = os.path.join(output_dir, output_filename)
+                coord_lines = get_coordinates_as_com_lines(symbols, current_coords)
+                with open(output_filepath, 'w') as f:
+                    f.write("\n".join(header_lines) + "\n")
+                    f.write("\n")
+                    f.write(f"{title_line} (TICT Step {i})\n")
+                    f.write("\n")
+                    f.write(f"{cm_line}\n")
+                    f.write("\n".join(coord_lines) + "\n")
+                    f.write("\n")
+                    # Add constraints if provided
+                    if constraints:
+                        for c in constraints:
+                            f.write(f"{c}\n")
+                        f.write("\n")
+            
+            files_created.append(output_filepath)
+        
+        info_msg = "\n".join(info_lines)
+        return True, f"Created {len(files_created)} files.\n{info_msg}", files_created
+    
+    except Exception as e:
+        return False, f"Error: {str(e)}", []
